@@ -5,7 +5,8 @@ using TMPro;
 namespace GameJam2026
 {
     /// <summary>
-    /// Manages all UI elements for displaying rover attributes
+    /// Manages all UI elements for displaying rover attributes with percentage text,
+    /// status bars, and gradient-based status indicator lights
     /// </summary>
     public class RoverUIManager : MonoBehaviour
     {
@@ -14,43 +15,51 @@ namespace GameJam2026
 
         [Header("Power UI")]
         [SerializeField] private Image powerFillBar;
-        [SerializeField] private TextMeshProUGUI powerText;
-        [SerializeField] private Image powerIcon;
-        [SerializeField] private Color powerNormalColor = Color.green;
-        [SerializeField] private Color powerWarningColor = Color.yellow;
-        [SerializeField] private Color powerCriticalColor = Color.red;
+        [SerializeField] private Image powerStatusLight;
+        [SerializeField] private TextMeshProUGUI powerPercentageText;
+        [SerializeField] private Gradient powerStatusGradient;
 
         [Header("Speed UI")]
         [SerializeField] private Image speedFillBar;
-        [SerializeField] private TextMeshProUGUI speedText;
-        [SerializeField] private TextMeshProUGUI speedMultiplierText;
+        [SerializeField] private Image speedStatusLight;
+        [SerializeField] private TextMeshProUGUI speedPercentageText;
+        [SerializeField] private Gradient speedStatusGradient;
 
         [Header("Heat UI")]
         [SerializeField] private Image heatFillBar;
-        [SerializeField] private TextMeshProUGUI heatText;
-        [SerializeField] private Color heatNormalColor = Color.blue;
-        [SerializeField] private Color heatWarningColor = Color.yellow;
-        [SerializeField] private Color heatCriticalColor = Color.red;
+        [SerializeField] private Image heatStatusLight;
+        [SerializeField] private TextMeshProUGUI heatPercentageText;
+        [SerializeField] private Gradient heatStatusGradient;
 
         [Header("Communication UI")]
         [SerializeField] private Image commRangeFillBar;
-        [SerializeField] private TextMeshProUGUI commRangeText;
+        [SerializeField] private Image commStatusLight;
+        [SerializeField] private TextMeshProUGUI commPercentageText;
+        [SerializeField] private Gradient commStatusGradient;
 
         [Header("Cargo UI")]
         [SerializeField] private Image cargoFillBar;
-        [SerializeField] private TextMeshProUGUI cargoText;
+        [SerializeField] private Image cargoStatusLight;
+        [SerializeField] private TextMeshProUGUI cargoPercentageText;
+        [SerializeField] private Gradient cargoStatusGradient;
 
-        [Header("Status UI")]
+        [Header("Day/Night Status")]
         [SerializeField] private TextMeshProUGUI dayNightText;
-        [SerializeField] private Image dayNightIcon;
-        [SerializeField] private Sprite dayIcon;
-        [SerializeField] private Sprite nightIcon;
+        [SerializeField] private Image dayNightStatusLight;
+        [SerializeField] private Color dayLightColor = new Color(1f, 0.9f, 0.3f);
+        [SerializeField] private Color nightLightColor = new Color(0.3f, 0.3f, 0.6f);
+
+        [Header("Warning Panel")]
         [SerializeField] private GameObject warningPanel;
         [SerializeField] private TextMeshProUGUI warningText;
+        [SerializeField] private Image warningStatusLight;
 
-        [Header("Animation Settings")]
-        [SerializeField] private float updateSpeed = 5f;
+        [Header("Update Settings")]
+        [SerializeField] private bool forceUpdateEveryFrame = true; // Enable for debugging
+        [SerializeField] private float updateSpeed = 10f;
         [SerializeField] private bool smoothTransitions = true;
+        [SerializeField] private bool pulseWarningLight = true;
+        [SerializeField] private float pulseSpeed = 2f;
 
         // Target values for smooth transitions
         private float targetPowerFill;
@@ -58,6 +67,20 @@ namespace GameJam2026
         private float targetHeatFill;
         private float targetCommFill;
         private float targetCargoFill;
+
+        // For pulsing warning light
+        private float warningPulseTime;
+
+        private void Awake()
+        {
+            // Find rover attributes early
+            if (roverAttributes == null)
+            {
+                roverAttributes = FindObjectOfType<RoverAttributeManager>();
+            }
+
+            InitializeGradients();
+        }
 
         private void OnEnable()
         {
@@ -79,17 +102,13 @@ namespace GameJam2026
         {
             if (roverAttributes == null)
             {
-                roverAttributes = FindObjectOfType<RoverAttributeManager>();
-                if (roverAttributes == null)
-                {
-                    Debug.LogError("RoverAttributeManager not found! Please assign it in the inspector.");
-                    enabled = false;
-                    return;
-                }
+                Debug.LogError("RoverAttributeManager not found! Please assign it in the inspector.");
+                enabled = false;
+                return;
             }
 
-            SubscribeToEvents();
-            InitializeUI();
+            // Force initial update
+            UpdateAllUI();
             
             if (warningPanel != null)
                 warningPanel.SetActive(false);
@@ -119,25 +138,43 @@ namespace GameJam2026
             roverAttributes.OnOverheated -= OnOverheated;
         }
 
-        private void InitializeUI()
-        {
-            UpdatePowerUI(roverAttributes.CurrentPower, roverAttributes.MaxPower);
-            UpdateSpeedUI(roverAttributes.SpeedMultiplier);
-            UpdateHeatUI(roverAttributes.CurrentHeat, roverAttributes.MaxHeat);
-            UpdateCommRangeUI(roverAttributes.CurrentCommunicationRange, roverAttributes.MaxCommunicationRange);
-            UpdateCargoUI(roverAttributes.CurrentCargoWeight, roverAttributes.MaxCargoCapacity);
-        }
-
         private void Update()
         {
+            if (roverAttributes == null) return;
+
+            // Force update every frame if enabled (for debugging/testing)
+            if (forceUpdateEveryFrame)
+            {
+                UpdateAllUI();
+            }
+
             // Smooth transitions for bars
             if (smoothTransitions)
             {
                 SmoothUpdateBars();
             }
 
-            // Update day/night indicator
+            // Update day/night indicator every frame
             UpdateDayNightUI();
+
+            // Pulse warning light if active
+            if (warningPanel != null && warningPanel.activeSelf && pulseWarningLight && warningStatusLight != null)
+            {
+                warningPulseTime += Time.deltaTime * pulseSpeed;
+                float alpha = (Mathf.Sin(warningPulseTime) + 1f) * 0.5f;
+                Color warningColor = Color.red;
+                warningColor.a = Mathf.Lerp(0.3f, 1f, alpha);
+                warningStatusLight.color = warningColor;
+            }
+        }
+
+        private void UpdateAllUI()
+        {
+            UpdatePowerUI(roverAttributes.CurrentPower, roverAttributes.MaxPower);
+            UpdateSpeedUI(roverAttributes.SpeedMultiplier);
+            UpdateHeatUI(roverAttributes.CurrentHeat, roverAttributes.MaxHeat);
+            UpdateCommRangeUI(roverAttributes.CurrentCommunicationRange, roverAttributes.MaxCommunicationRange);
+            UpdateCargoUI(roverAttributes.CurrentCargoWeight, roverAttributes.MaxCargoCapacity);
         }
 
         private void SmoothUpdateBars()
@@ -162,87 +199,127 @@ namespace GameJam2026
 
         private void UpdatePowerUI(float current, float max)
         {
-            float percentage = current / max;
-            targetPowerFill = percentage;
+            float percentage = (current / max) * 100f;
+            float normalizedPercentage = current / max;
+            
+            targetPowerFill = normalizedPercentage;
 
             if (!smoothTransitions && powerFillBar != null)
-                powerFillBar.fillAmount = percentage;
+                powerFillBar.fillAmount = normalizedPercentage;
 
-            if (powerText != null)
-                powerText.text = $"Power: {current:F0}/{max:F0}";
+            // Update percentage text - just the number
+            if (powerPercentageText != null)
+            {
+                powerPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
+            }
 
-            // Color coding based on power level
-            Color color = powerNormalColor;
-            if (percentage < 0.2f)
-                color = powerCriticalColor;
-            else if (percentage < 0.5f)
-                color = powerWarningColor;
+            // Update status light color based on gradient
+            if (powerStatusLight != null && powerStatusGradient != null)
+                powerStatusLight.color = powerStatusGradient.Evaluate(normalizedPercentage);
 
-            if (powerFillBar != null)
-                powerFillBar.color = color;
-            if (powerIcon != null)
-                powerIcon.color = color;
+            // Also update bar color to match
+            if (powerFillBar != null && powerStatusGradient != null)
+                powerFillBar.color = powerStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateSpeedUI(float multiplier)
         {
-            targetSpeedFill = multiplier / 2f; // Assuming max multiplier is 2
+            float normalizedSpeed = Mathf.Clamp01(multiplier / 2f); // Assuming max multiplier is 2
+            float percentage = normalizedSpeed * 100f;
+            
+            targetSpeedFill = normalizedSpeed;
 
             if (!smoothTransitions && speedFillBar != null)
-                speedFillBar.fillAmount = targetSpeedFill;
+                speedFillBar.fillAmount = normalizedSpeed;
 
-            float currentSpeed = roverAttributes.CurrentSpeed;
-            if (speedText != null)
-                speedText.text = $"Speed: {currentSpeed:F1} m/s";
+            // Update percentage text - just the number
+            if (speedPercentageText != null)
+            {
+                speedPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
+            }
 
-            if (speedMultiplierText != null)
-                speedMultiplierText.text = $"x{multiplier:F2}";
+            // Update status light color based on gradient
+            if (speedStatusLight != null && speedStatusGradient != null)
+                speedStatusLight.color = speedStatusGradient.Evaluate(normalizedSpeed);
+
+            // Also update bar color to match
+            if (speedFillBar != null && speedStatusGradient != null)
+                speedFillBar.color = speedStatusGradient.Evaluate(normalizedSpeed);
         }
 
         private void UpdateHeatUI(float current, float max)
         {
-            float percentage = current / max;
-            targetHeatFill = percentage;
+            float percentage = (current / max) * 100f;
+            float normalizedPercentage = current / max;
+            
+            targetHeatFill = normalizedPercentage;
 
             if (!smoothTransitions && heatFillBar != null)
-                heatFillBar.fillAmount = percentage;
+                heatFillBar.fillAmount = normalizedPercentage;
 
-            if (heatText != null)
-                heatText.text = $"Heat: {current:F0}°/{max:F0}°";
+            // Update percentage text - just the number
+            if (heatPercentageText != null)
+            {
+                heatPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
+            }
 
-            // Color coding based on heat level
-            Color color = heatNormalColor;
-            if (percentage > 0.8f)
-                color = heatCriticalColor;
-            else if (percentage > 0.6f)
-                color = heatWarningColor;
+            // Update status light color based on gradient
+            if (heatStatusLight != null && heatStatusGradient != null)
+                heatStatusLight.color = heatStatusGradient.Evaluate(normalizedPercentage);
 
-            if (heatFillBar != null)
-                heatFillBar.color = color;
+            // Also update bar color to match
+            if (heatFillBar != null && heatStatusGradient != null)
+                heatFillBar.color = heatStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateCommRangeUI(float current, float max)
         {
-            float percentage = current / max;
-            targetCommFill = percentage;
+            float percentage = (current / max) * 100f;
+            float normalizedPercentage = current / max;
+            
+            targetCommFill = normalizedPercentage;
 
             if (!smoothTransitions && commRangeFillBar != null)
-                commRangeFillBar.fillAmount = percentage;
+                commRangeFillBar.fillAmount = normalizedPercentage;
 
-            if (commRangeText != null)
-                commRangeText.text = $"Comm: {current:F0}m/{max:F0}m";
+            // Update percentage text - just the number
+            if (commPercentageText != null)
+            {
+                commPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
+            }
+
+            // Update status light color based on gradient
+            if (commStatusLight != null && commStatusGradient != null)
+                commStatusLight.color = commStatusGradient.Evaluate(normalizedPercentage);
+
+            // Also update bar color to match
+            if (commRangeFillBar != null && commStatusGradient != null)
+                commRangeFillBar.color = commStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateCargoUI(float current, float max)
         {
-            float percentage = current / max;
-            targetCargoFill = percentage;
+            float percentage = (current / max) * 100f;
+            float normalizedPercentage = current / max;
+            
+            targetCargoFill = normalizedPercentage;
 
             if (!smoothTransitions && cargoFillBar != null)
-                cargoFillBar.fillAmount = percentage;
+                cargoFillBar.fillAmount = normalizedPercentage;
 
-            if (cargoText != null)
-                cargoText.text = $"Cargo: {current:F1}/{max:F1} kg";
+            // Update percentage text - just the number
+            if (cargoPercentageText != null)
+            {
+                cargoPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
+            }
+
+            // Update status light color based on gradient
+            if (cargoStatusLight != null && cargoStatusGradient != null)
+                cargoStatusLight.color = cargoStatusGradient.Evaluate(normalizedPercentage);
+
+            // Also update bar color to match
+            if (cargoFillBar != null && cargoStatusGradient != null)
+                cargoFillBar.color = cargoStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateDayNightUI()
@@ -250,12 +327,11 @@ namespace GameJam2026
             bool isDaytime = roverAttributes.IsDaytime;
 
             if (dayNightText != null)
-                dayNightText.text = isDaytime ? "Day" : "Night";
+                dayNightText.text = isDaytime ? "DAY" : "NIGHT";
 
-            if (dayNightIcon != null)
+            if (dayNightStatusLight != null)
             {
-                dayNightIcon.sprite = isDaytime ? dayIcon : nightIcon;
-                dayNightIcon.color = isDaytime ? Color.yellow : new Color(0.5f, 0.5f, 1f);
+                dayNightStatusLight.color = isDaytime ? dayLightColor : nightLightColor;
             }
         }
 
@@ -270,7 +346,7 @@ namespace GameJam2026
 
             if (warningText != null)
             {
-                string warningMessage = "WARNING: ";
+                string warningMessage = "⚠ ALERT: ";
                 if (roverAttributes.PowerPercentage < 0.2f)
                     warningMessage += "LOW POWER! ";
                 if (roverAttributes.HeatPercentage > 0.8f)
@@ -279,11 +355,12 @@ namespace GameJam2026
                 warningText.text = warningMessage;
             }
 
-            // Auto-hide warning after 3 seconds
-            Invoke(nameof(HideWarning), 3f);
+            // Auto-hide warning after 3 seconds if not critical anymore
+            CancelInvoke(nameof(CheckAndHideWarning));
+            Invoke(nameof(CheckAndHideWarning), 3f);
         }
 
-        private void HideWarning()
+        private void CheckAndHideWarning()
         {
             if (warningPanel != null && !roverAttributes.IsCriticalCondition)
                 warningPanel.SetActive(false);
@@ -292,7 +369,7 @@ namespace GameJam2026
         private void OnPowerDepleted()
         {
             if (warningText != null)
-                warningText.text = "POWER DEPLETED! SYSTEMS OFFLINE!";
+                warningText.text = "⚠ CRITICAL: POWER DEPLETED!";
 
             if (warningPanel != null)
                 warningPanel.SetActive(true);
@@ -301,10 +378,118 @@ namespace GameJam2026
         private void OnOverheated()
         {
             if (warningText != null)
-                warningText.text = "CRITICAL OVERHEAT! SHUTTING DOWN!";
+                warningText.text = "⚠ CRITICAL: SYSTEM OVERHEATED!";
 
             if (warningPanel != null)
                 warningPanel.SetActive(true);
+        }
+
+        #endregion
+
+        #region Gradient Initialization
+
+        private void InitializeGradients()
+        {
+            // Power gradient: Red (0%) → Yellow (50%) → Green (100%)
+            if (powerStatusGradient == null || powerStatusGradient.colorKeys.Length == 0)
+            {
+                powerStatusGradient = new Gradient();
+                GradientColorKey[] colorKeys = new GradientColorKey[3];
+                colorKeys[0] = new GradientColorKey(Color.red, 0f);
+                colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
+                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+
+                GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+                alphaKeys[0] = new GradientAlphaKey(1f, 0f);
+                alphaKeys[1] = new GradientAlphaKey(1f, 1f);
+
+                powerStatusGradient.SetKeys(colorKeys, alphaKeys);
+            }
+
+            // Speed gradient: Blue (0%) → Cyan (50%) → Green (100%)
+            if (speedStatusGradient == null || speedStatusGradient.colorKeys.Length == 0)
+            {
+                speedStatusGradient = new Gradient();
+                GradientColorKey[] colorKeys = new GradientColorKey[3];
+                colorKeys[0] = new GradientColorKey(new Color(0.3f, 0.3f, 1f), 0f); // Blue
+                colorKeys[1] = new GradientColorKey(Color.cyan, 0.5f);
+                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+
+                GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+                alphaKeys[0] = new GradientAlphaKey(1f, 0f);
+                alphaKeys[1] = new GradientAlphaKey(1f, 1f);
+
+                speedStatusGradient.SetKeys(colorKeys, alphaKeys);
+            }
+
+            // Heat gradient: Green (0%) → Yellow (50%) → Red (100%)
+            if (heatStatusGradient == null || heatStatusGradient.colorKeys.Length == 0)
+            {
+                heatStatusGradient = new Gradient();
+                GradientColorKey[] colorKeys = new GradientColorKey[3];
+                colorKeys[0] = new GradientColorKey(Color.green, 0f);
+                colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
+                colorKeys[2] = new GradientColorKey(Color.red, 1f);
+
+                GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+                alphaKeys[0] = new GradientAlphaKey(1f, 0f);
+                alphaKeys[1] = new GradientAlphaKey(1f, 1f);
+
+                heatStatusGradient.SetKeys(colorKeys, alphaKeys);
+            }
+
+            // Communication gradient: Red (0%) → Orange (50%) → Green (100%)
+            if (commStatusGradient == null || commStatusGradient.colorKeys.Length == 0)
+            {
+                commStatusGradient = new Gradient();
+                GradientColorKey[] colorKeys = new GradientColorKey[3];
+                colorKeys[0] = new GradientColorKey(Color.red, 0f);
+                colorKeys[1] = new GradientColorKey(new Color(1f, 0.5f, 0f), 0.5f); // Orange
+                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+
+                GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+                alphaKeys[0] = new GradientAlphaKey(1f, 0f);
+                alphaKeys[1] = new GradientAlphaKey(1f, 1f);
+
+                commStatusGradient.SetKeys(colorKeys, alphaKeys);
+            }
+
+            // Cargo gradient: Green (0%) → Yellow (70%) → Red (100%)
+            if (cargoStatusGradient == null || cargoStatusGradient.colorKeys.Length == 0)
+            {
+                cargoStatusGradient = new Gradient();
+                GradientColorKey[] colorKeys = new GradientColorKey[3];
+                colorKeys[0] = new GradientColorKey(Color.green, 0f);
+                colorKeys[1] = new GradientColorKey(Color.yellow, 0.7f);
+                colorKeys[2] = new GradientColorKey(Color.red, 1f);
+
+                GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+                alphaKeys[0] = new GradientAlphaKey(1f, 0f);
+                alphaKeys[1] = new GradientAlphaKey(1f, 1f);
+
+                cargoStatusGradient.SetKeys(colorKeys, alphaKeys);
+            }
+        }
+
+        #endregion
+
+        #region Debug Methods
+
+        [ContextMenu("Force Update UI")]
+        private void DebugForceUpdate()
+        {
+            UpdateAllUI();
+            Debug.Log("UI Force Updated!");
+        }
+
+        [ContextMenu("Test Power Change")]
+        private void DebugTestPower()
+        {
+            if (roverAttributes != null)
+            {
+                roverAttributes.ModifyPower(-10f);
+                Debug.Log($"Power: {roverAttributes.CurrentPower}");
+            }
         }
 
         #endregion
