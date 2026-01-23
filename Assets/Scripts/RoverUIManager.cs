@@ -31,8 +31,8 @@ namespace GameJam2026
         [SerializeField] private TextMeshProUGUI heatPercentageText;
         [SerializeField] private Gradient heatStatusGradient;
 
-        [Header("Communication UI")]
-        [SerializeField] private Image commRangeFillBar;
+        [Header("Communication UI - Signal Bars Style")]
+        [SerializeField] private SignalBarsUI commSignalBars;
         [SerializeField] private Image commStatusLight;
         [SerializeField] private TextMeshProUGUI commPercentageText;
         [SerializeField] private Gradient commStatusGradient;
@@ -55,7 +55,7 @@ namespace GameJam2026
         [SerializeField] private Image warningStatusLight;
 
         [Header("Update Settings")]
-        [SerializeField] private bool forceUpdateEveryFrame = true; // Enable for debugging
+        [SerializeField] private bool forceUpdateEveryFrame = true;
         [SerializeField] private float updateSpeed = 10f;
         [SerializeField] private bool smoothTransitions = true;
         [SerializeField] private bool pulseWarningLight = true;
@@ -65,7 +65,6 @@ namespace GameJam2026
         private float targetPowerFill;
         private float targetSpeedFill;
         private float targetHeatFill;
-        private float targetCommFill;
         private float targetCargoFill;
 
         // For pulsing warning light
@@ -188,9 +187,6 @@ namespace GameJam2026
             if (heatFillBar != null)
                 heatFillBar.fillAmount = Mathf.Lerp(heatFillBar.fillAmount, targetHeatFill, Time.deltaTime * updateSpeed);
 
-            if (commRangeFillBar != null)
-                commRangeFillBar.fillAmount = Mathf.Lerp(commRangeFillBar.fillAmount, targetCommFill, Time.deltaTime * updateSpeed);
-
             if (cargoFillBar != null)
                 cargoFillBar.fillAmount = Mathf.Lerp(cargoFillBar.fillAmount, targetCargoFill, Time.deltaTime * updateSpeed);
         }
@@ -276,11 +272,6 @@ namespace GameJam2026
         {
             float percentage = (current / max) * 100f;
             float normalizedPercentage = current / max;
-            
-            targetCommFill = normalizedPercentage;
-
-            if (!smoothTransitions && commRangeFillBar != null)
-                commRangeFillBar.fillAmount = normalizedPercentage;
 
             // Update percentage text - just the number
             if (commPercentageText != null)
@@ -288,13 +279,15 @@ namespace GameJam2026
                 commPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
+            // Update signal bars
+            if (commSignalBars != null)
+            {
+                commSignalBars.UpdateSignalStrength(normalizedPercentage);
+            }
+
             // Update status light color based on gradient
             if (commStatusLight != null && commStatusGradient != null)
                 commStatusLight.color = commStatusGradient.Evaluate(normalizedPercentage);
-
-            // Also update bar color to match
-            if (commRangeFillBar != null && commStatusGradient != null)
-                commRangeFillBar.color = commStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateCargoUI(float current, float max)
