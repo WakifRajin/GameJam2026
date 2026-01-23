@@ -1,5 +1,6 @@
 using UnityEngine;
-using UnityEngine.InputSystem; // REQUIRED: Add this namespace
+using UnityEngine.InputSystem;
+using GameJam2026;
 
 public class CarController : MonoBehaviour
 {
@@ -35,6 +36,7 @@ public class CarController : MonoBehaviour
     private float _currentSteerAngle;
     private float _currentBreakForce;
     private float _currentAcceleration;
+    private RoverAttributeManager attributeManager;
 
     private void Awake()
     {
@@ -52,6 +54,29 @@ public class CarController : MonoBehaviour
         else 
         {
             Debug.LogError("Please assign the Input Action Asset in the Inspector!");
+        }
+    }
+
+    void Start() 
+    {
+        attributeManager = GetComponent<RoverAttributeManager>();
+    }
+
+    void Update() 
+    {
+        // When rover is moving
+        Vector2 moveInput = _moveAction.ReadValue<Vector2>();
+        if (moveInput.magnitude > 0) {
+            attributeManager?.SetMoving(true);
+        } else {
+            attributeManager?.SetMoving(false);
+        }
+        
+        // Apply speed from attribute manager
+        if (attributeManager != null)
+        {
+            float speedModifier = attributeManager.SpeedMultiplier;
+            // Use this in your movement calculations
         }
     }
 
