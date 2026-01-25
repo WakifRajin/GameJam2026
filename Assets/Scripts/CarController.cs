@@ -4,178 +4,207 @@ using GameJam2026;
 
 public class CarController : MonoBehaviour
 {
-    [Header("Car Settings")]
-    public float motorTorque = 2000f;
-    public float brakeTorque = 4000f;
-    public float maxSteeringAngle = 30f;
+    [Header("Movement Settings")]
+    [SerializeField] private float acceleration = 500f;
+    [SerializeField] private float maxSpeed = 8f;
+    [SerializeField] private float brakeForce = 1000f;
+    [SerializeField] private float steerAngle = 25f;
     
-    [Header("Input Setup (New System)")]
-    // Assign these in the Inspector if using referencing, 
-    // OR this script handles auto-creation if you generated the C# class.
-    public InputActionAsset inputActions; 
-    private InputAction _moveAction;
-    private InputAction _brakeAction;
-
-    [Header("Stability")]
-    public Vector3 centerOfMassOffset;
-    public float antiRollForce = 5000f;
-
+    [Header("Physics Settings")]
+    [SerializeField] private float downForce = 100f; // Keeps rover grounded
+    [SerializeField] private Vector3 centerOfMass = new Vector3(0, -0.5f, 0);
+    
+    [Header("Input System")]
+    [SerializeField] private InputActionAsset inputActions;
+    
     [Header("Wheel Colliders")]
-    public WheelCollider frontLeftCollider;
-    public WheelCollider frontRightCollider;
-    public WheelCollider rearLeftCollider;
-    public WheelCollider rearRightCollider;
-
-    [Header("Wheel Transforms")]
-    public Transform frontLeftMesh;
-    public Transform frontRightMesh;
-    public Transform rearLeftMesh;
-    public Transform rearRightMesh;
-
-    private Rigidbody _rb;
-    private float _currentSteerAngle;
-    private float _currentBreakForce;
-    private float _currentAcceleration;
+    [SerializeField] private WheelCollider frontLeft;
+    [SerializeField] private WheelCollider frontRight;
+    [SerializeField] private WheelCollider rearLeft;
+    [SerializeField] private WheelCollider rearRight;
+    
+    [Header("Wheel Meshes")]
+    [SerializeField] private Transform frontLeftMesh;
+    [SerializeField] private Transform frontRightMesh;
+    [SerializeField] private Transform rearLeftMesh;
+    [SerializeField] private Transform rearRightMesh;
+    
+    // Private variables
+    private Rigidbody rb;
+    private InputAction moveAction;
+    private InputAction brakeAction;
+    private float currentSpeed;
+    private float motorInput;
+    private float steerInput;
     private RoverAttributeManager attributeManager;
 
     private void Awake()
     {
-        _rb = GetComponent<Rigidbody>();
-        _rb.centerOfMass += centerOfMassOffset;
-
-        // --- NEW INPUT SYSTEM SETUP ---
-        // Ideally, drag your .inputactions asset into the slot in Inspector.
-        // We find the specific actions by string name "Car/Move" etc.
+        rb = GetComponent<Rigidbody>();
+        
+        // Basic rigidbody setup
+        rb.mass = 1000f;
+        rb.linearDamping = 0.1f;
+        rb.angularDamping = 0.5f;
+        rb.centerOfMass = centerOfMass;
+        
+        // Setup input
         if (inputActions != null)
         {
-            _moveAction = inputActions.FindAction("Move");
-            _brakeAction = inputActions.FindAction("Brake");
-        }
-        else 
-        {
-            Debug.LogError("Please assign the Input Action Asset in the Inspector!");
+            moveAction = inputActions.FindAction("Move");
+            brakeAction = inputActions.FindAction("Brake");
         }
     }
 
-    void Start() 
+    private void Start()
     {
         attributeManager = GetComponent<RoverAttributeManager>();
-    }
-
-    void Update() 
-    {
-        // When rover is moving
-        Vector2 moveInput = _moveAction.ReadValue<Vector2>();
-        if (moveInput.magnitude > 0) {
-            attributeManager?.SetMoving(true);
-        } else {
-            attributeManager?.SetMoving(false);
-        }
-        
-        // Apply speed from attribute manager
-        if (attributeManager != null)
-        {
-            float speedModifier = attributeManager.SpeedMultiplier;
-            // Use this in your movement calculations
-        }
+        SetupWheels();
     }
 
     private void OnEnable()
     {
-        _moveAction?.Enable();
-        _brakeAction?.Enable();
+        moveAction?.Enable();
+        brakeAction?.Enable();
     }
 
     private void OnDisable()
     {
-        _moveAction?.Disable();
-        _brakeAction?.Disable();
+        moveAction?.Disable();
+        brakeAction?.Disable();
+    }
+
+    private void Update()
+    {
+        // Get input
+        Vector2 input = moveAction.ReadValue<Vector2>();
+        motorInput = input.y;
+        steerInput = input.x;
+        
+        // Update attribute manager
+        currentSpeed = rb.linearVelocity.magnitude;
+        if (attributeManager != null)
+        {
+            attributeManager.SetMoving(currentSpeed > 0.5f);
+        }
     }
 
     private void FixedUpdate()
     {
-        GetInput();
-        HandleMotor();
-        HandleSteering();
-        UpdateWheels();
-        ApplyAntiRoll();
-    }
-
-    private void GetInput()
-    {
-        // --- UPDATED INPUT LOGIC ---
-        // Read Vector2 from the Move action (X=Turn, Y=Drive)
-        Vector2 moveInput = _moveAction.ReadValue<Vector2>();
-
-        float driveInput = moveInput.y; // W/S or Up/Down
-        float turnInput = moveInput.x;  // A/D or Left/Right
-
-        _currentAcceleration = motorTorque * driveInput;
-        _currentSteerAngle = maxSteeringAngle * turnInput;
+        // Apply downforce to keep grounded
+        rb.AddForce(-transform.up * downForce * rb.linearVelocity.magnitude);
         
-        // Read Brake button status
-        if (_brakeAction.IsPressed())
-            _currentBreakForce = brakeTorque;
+        // Handle movement
+        Move();
+        Steer();
+        Brake();
+        
+        // Update visual wheels
+        UpdateWheelMeshes();
+    }
+
+    private void Move()
+    {
+        // Get speed multiplier
+        float speedMultiplier = 1f;
+        if (attributeManager != null)
+        {
+            speedMultiplier = attributeManager.SpeedMultiplier;
+        }
+        
+        // Calculate motor torque
+        float motor = acceleration * motorInput * speedMultiplier;
+        
+        // Limit max speed
+        if (currentSpeed < maxSpeed || motorInput < 0)
+        {
+            rearLeft.motorTorque = motor;
+            rearRight.motorTorque = motor;
+        }
         else
-            _currentBreakForce = 0f;
+        {
+            rearLeft.motorTorque = 0;
+            rearRight.motorTorque = 0;
+        }
     }
 
-    // ... Rest of the functions (HandleMotor, HandleSteering, etc.) remain exactly the same as the previous script ...
-    
-    private void HandleMotor()
+    private void Steer()
     {
-        rearLeftCollider.motorTorque = _currentAcceleration;
-        rearRightCollider.motorTorque = _currentAcceleration;
-
-        frontLeftCollider.brakeTorque = _currentBreakForce;
-        frontRightCollider.brakeTorque = _currentBreakForce;
-        rearLeftCollider.brakeTorque = _currentBreakForce;
-        rearRightCollider.brakeTorque = _currentBreakForce;
+        float steering = steerAngle * steerInput;
+        frontLeft.steerAngle = steering;
+        frontRight.steerAngle = steering;
     }
 
-    private void HandleSteering()
+    private void Brake()
     {
-        frontLeftCollider.steerAngle = _currentSteerAngle;
-        frontRightCollider.steerAngle = _currentSteerAngle;
+        float brake = 0f;
+        
+        if (brakeAction.IsPressed())
+        {
+            brake = brakeForce;
+        }
+        else if (Mathf.Abs(motorInput) < 0.1f && currentSpeed < 1f)
+        {
+            // Auto brake when stopped
+            brake = brakeForce * 0.5f;
+        }
+        
+        frontLeft.brakeTorque = brake;
+        frontRight.brakeTorque = brake;
+        rearLeft.brakeTorque = brake;
+        rearRight.brakeTorque = brake;
     }
 
-    private void UpdateWheels()
+    private void UpdateWheelMeshes()
     {
-        UpdateSingleWheel(frontLeftCollider, frontLeftMesh);
-        UpdateSingleWheel(frontRightCollider, frontRightMesh);
-        UpdateSingleWheel(rearLeftCollider, rearLeftMesh);
-        UpdateSingleWheel(rearRightCollider, rearRightMesh);
+        UpdateWheelMesh(frontLeft, frontLeftMesh);
+        UpdateWheelMesh(frontRight, frontRightMesh);
+        UpdateWheelMesh(rearLeft, rearLeftMesh);
+        UpdateWheelMesh(rearRight, rearRightMesh);
     }
 
-    private void UpdateSingleWheel(WheelCollider wheelCollider, Transform wheelTransform)
+    private void UpdateWheelMesh(WheelCollider collider, Transform mesh)
     {
-        Vector3 pos;
-        Quaternion rot;
-        wheelCollider.GetWorldPose(out pos, out rot);
-        wheelTransform.rotation = rot;
-        wheelTransform.position = pos;
+        if (mesh == null) return;
+        
+        Vector3 position;
+        Quaternion rotation;
+        collider.GetWorldPose(out position, out rotation);
+        
+        mesh.position = position;
+        mesh.rotation = rotation;
     }
 
-    private void ApplyAntiRoll()
+    private void SetupWheels()
     {
-        ApplyAntiRollForce(frontLeftCollider, frontRightCollider);
-        ApplyAntiRollForce(rearLeftCollider, rearRightCollider);
+        SetupWheel(frontLeft);
+        SetupWheel(frontRight);
+        SetupWheel(rearLeft);
+        SetupWheel(rearRight);
     }
 
-    private void ApplyAntiRollForce(WheelCollider wheelL, WheelCollider wheelR)
+    private void SetupWheel(WheelCollider wheel)
     {
-        float travelL = 1.0f;
-        float travelR = 1.0f;
-
-        bool groundedL = wheelL.GetGroundHit(out WheelHit hitL);
-        if (groundedL) travelL = (-wheelL.transform.InverseTransformPoint(hitL.point).y - wheelL.radius) / wheelL.suspensionDistance;
-
-        bool groundedR = wheelR.GetGroundHit(out WheelHit hitR);
-        if (groundedR) travelR = (-wheelR.transform.InverseTransformPoint(hitR.point).y - wheelR.radius) / wheelR.suspensionDistance;
-
-        float antiRollFactor = (travelL - travelR) * antiRollForce;
-
-        if (groundedL) _rb.AddForceAtPosition(wheelL.transform.up * -antiRollFactor, wheelL.transform.position);
-        if (groundedR) _rb.AddForceAtPosition(wheelR.transform.up * antiRollFactor, wheelR.transform.position);
+        if (wheel == null) return;
+        
+        // Suspension
+        wheel.suspensionDistance = 0.2f;
+        
+        JointSpring spring = wheel.suspensionSpring;
+        spring.spring = 20000f;
+        spring.damper = 2000f;
+        spring.targetPosition = 0.5f;
+        wheel.suspensionSpring = spring;
+        
+        // Friction
+        WheelFrictionCurve forward = wheel.forwardFriction;
+        forward.stiffness = 1.5f;
+        wheel.forwardFriction = forward;
+        
+        WheelFrictionCurve sideways = wheel.sidewaysFriction;
+        sideways.stiffness = 1.5f;
+        wheel.sidewaysFriction = sideways;
+        
+        wheel.mass = 20f;
     }
 }
