@@ -1,12 +1,11 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
-using System;
-using System.Linq;
 
 namespace GameJam2026
 {
     /// <summary>
-    /// Manages level progression, objectives, and win/lose conditions
+    /// Manages level objectives, win/lose conditions, and progression
     /// </summary>
     public class LevelManager : MonoBehaviour
     {
@@ -27,7 +26,7 @@ namespace GameJam2026
         
         [Header("References")]
         [SerializeField] private RoverAttributeManager roverAttributes;
-        [SerializeField] private InventoryManager inventoryManager;
+        [SerializeField] private GridInventoryManager gridInventoryManager; // UPDATED: Use new inventory
         [SerializeField] private DayNightCycle dayNightCycle;
         [SerializeField] private SignalTower signalTower;
         
@@ -39,6 +38,9 @@ namespace GameJam2026
         private bool levelCompleted = false;
         private bool levelFailed = false;
         
+        // Track collected items by type
+        private Dictionary<string, int> collectedItemCounts = new Dictionary<string, int>();
+        
         // Events
         public event Action OnLevelStarted;
         public event Action OnLevelCompleted;
@@ -49,6 +51,8 @@ namespace GameJam2026
         public bool IsLevelActive => levelStarted && !levelCompleted && !levelFailed;
         public float TimeRemaining => timeRemaining;
         public List<ObjectiveTracker> Objectives => objectiveTrackers;
+        public string LevelName => levelName;
+        public string LevelDescription => levelDescription;
 
         private void Start()
         {
@@ -64,8 +68,9 @@ namespace GameJam2026
             if (roverAttributes == null)
                 roverAttributes = FindObjectOfType<RoverAttributeManager>();
             
-            if (inventoryManager == null)
-                inventoryManager = FindObjectOfType<InventoryManager>();
+            // UPDATED: Find GridInventoryManager instead of old InventoryManager
+            if (gridInventoryManager == null)
+                gridInventoryManager = FindObjectOfType<GridInventoryManager>();
             
             if (dayNightCycle == null)
                 dayNightCycle = FindObjectOfType<DayNightCycle>();
@@ -77,12 +82,21 @@ namespace GameJam2026
         private void InitializeObjectives()
         {
             objectiveTrackers.Clear();
+            collectedItemCounts.Clear();
             
             foreach (var objective in objectives)
             {
+                if (objective == null)
+                {
+                    Debug.LogWarning("LevelManager: Null objective found, skipping");
+                    continue;
+                }
+                
                 var tracker = new ObjectiveTracker { objective = objective };
                 tracker.OnCompleted += HandleObjectiveCompleted;
                 objectiveTrackers.Add(tracker);
+                
+                Debug.Log($"Initialized objective: {objective.objectiveTitle} (Type: {objective.objectiveType})");
             }
         }
 
@@ -132,132 +146,256 @@ namespace GameJam2026
         {
             if (roverAttributes != null)
             {
-                if (failOnPowerDepletion)
-                    roverAttributes.OnPowerDepleted += () => FailLevel("Power depleted!");
+                roverAttributes.OnPowerDepleted += HandlePowerDepleted;
             }
             
-            if (inventoryManager != null)
+            // UPDATED: Subscribe to GridInventoryManager events
+            if (gridInventoryManager != null)
             {
-                inventoryManager.OnItemAdded += OnItemCollected;
+                gridInventoryManager.OnItemAddedToGrid += HandleItemCollected;
+                gridInventoryManager.OnResourceChanged += HandleResourceChanged;
+                Debug.Log("✓ Subscribed to GridInventoryManager events");
+            }
+            else
+            {
+                Debug.LogError("LevelManager: GridInventoryManager not found! Objectives won't update.");
             }
             
             if (signalTower != null)
             {
-                signalTower.OnTowerActivated += OnSignalTowerActivated;
+                signalTower.OnTowerActivated += HandleTowerActivated;
             }
         }
+
+        private void OnDestroy()
+        {
+            UnsubscribeFromEvents();
+        }
+
+        private void UnsubscribeFromEvents()
+        {
+            if (roverAttributes != null)
+            {
+                roverAttributes.OnPowerDepleted -= HandlePowerDepleted;
+            }
+            
+            // UPDATED: Unsubscribe from GridInventoryManager
+            if (gridInventoryManager != null)
+            {
+                gridInventoryManager.OnItemAddedToGrid -= HandleItemCollected;
+                gridInventoryManager.OnResourceChanged -= HandleResourceChanged;
+            }
+            
+            if (signalTower != null)
+            {
+                signalTower.OnTowerActivated -= HandleTowerActivated;
+            }
+        }
+
+        #region Event Handlers
+
+        // UPDATED: Handle item collection from GridInventoryManager
+        private void HandleItemCollected(CollectibleItem item, int x, int y)
+        {
+            if (item == null) return;
+            
+            Debug.Log($"LevelManager: Item collected - {item.itemName} (Type: {item.itemType})");
+            
+            // Track by item type
+            string itemTypeKey = item.itemType.ToString();
+            if (!collectedItemCounts.ContainsKey(itemTypeKey))
+            {
+                collectedItemCounts[itemTypeKey] = 0;
+            }
+            collectedItemCounts[itemTypeKey]++;
+            
+            // Track by resource type (for specific objectives)
+            string resourceKey = item.resourceType;
+            if (!string.IsNullOrEmpty(resourceKey))
+            {
+                if (!collectedItemCounts.ContainsKey(resourceKey))
+                {
+                    collectedItemCounts[resourceKey] = 0;
+                }
+                collectedItemCounts[resourceKey]++;
+            }
+            
+            // Update relevant objectives
+            UpdateCollectionObjectives();
+        }
+
+        private void HandleResourceChanged(string resourceType, float amount)
+        {
+            Debug.Log($"LevelManager: Resource changed - {resourceType}: {amount}");
+            UpdateCollectionObjectives();
+        }
+
+        private void UpdateCollectionObjectives()
+        {
+            foreach (var tracker in objectiveTrackers)
+            {
+                if (tracker.isCompleted) continue;
+                
+                var objective = tracker.objective;
+                
+                switch (objective.objectiveType)
+                {
+                    case ObjectiveType.CollectItems:
+                        UpdateCollectItemsObjective(tracker);
+                        break;
+                }
+            }
+        }
+
+        private void UpdateCollectItemsObjective(ObjectiveTracker tracker)
+        {
+            var objective = tracker.objective;
+            
+            // Count items by resource type
+            if (!string.IsNullOrEmpty(objective.targetResourceType))
+            {
+                // Check by resource type (e.g., "Material", "PowerCell")
+                if (collectedItemCounts.ContainsKey(objective.targetResourceType))
+                {
+                    int count = collectedItemCounts[objective.targetResourceType];
+                    tracker.UpdateProgress(count);
+                    Debug.Log($"Objective '{objective.objectiveTitle}': {count}/{objective.targetValue}");
+                }
+                else
+                {
+                    // Try checking resources in inventory
+                    if (gridInventoryManager != null)
+                    {
+                        float resourceAmount = gridInventoryManager.GetResource(objective.targetResourceType);
+                        tracker.UpdateProgress(resourceAmount);
+                        Debug.Log($"Objective '{objective.objectiveTitle}' (Resource): {resourceAmount}/{objective.targetValue}");
+                    }
+                }
+            }
+            else
+            {
+                // Count all items in inventory
+                if (gridInventoryManager != null)
+                {
+                    tracker.UpdateProgress(gridInventoryManager.UsedSlots);
+                }
+            }
+        }
+
+        private void HandleTowerActivated()
+        {
+            Debug.Log("LevelManager: Tower activated!");
+            
+            foreach (var tracker in objectiveTrackers)
+            {
+                if (tracker.objective.objectiveType == ObjectiveType.RepairObject ||
+                    tracker.objective.objectiveType == ObjectiveType.ActivateObject)
+                {
+                    tracker.UpdateProgress(tracker.objective.targetValue);
+                }
+            }
+        }
+
+        private void HandlePowerDepleted()
+        {
+            if (failOnPowerDepletion)
+            {
+                FailLevel("Power depleted!");
+            }
+        }
+
+        #endregion
+
+        #region Objective Updates
 
         private void UpdateObjectives()
         {
             foreach (var tracker in objectiveTrackers)
             {
-                if (tracker.isCompleted || !tracker.isActive) continue;
+                if (tracker.isCompleted) continue;
                 
-                switch (tracker.objective.type)
+                var objective = tracker.objective;
+                
+                switch (objective.objectiveType)
                 {
-                    case ObjectiveType.CollectItems:
-                        UpdateCollectObjective(tracker);
+                    case ObjectiveType.Survival:
+                        UpdateSurvivalObjective(tracker);
                         break;
                         
-                    case ObjectiveType.RestorePower:
-                        UpdatePowerObjective(tracker);
+                    case ObjectiveType.ReachLocation:
+                        UpdateReachLocationObjective(tracker);
                         break;
                         
                     case ObjectiveType.RepairObject:
                         UpdateRepairObjective(tracker);
                         break;
-                        
-                    case ObjectiveType.SurviveUntil:
-                        UpdateSurviveObjective(tracker);
-                        break;
                 }
             }
         }
 
-        private void UpdateCollectObjective(ObjectiveTracker tracker)
+        private void UpdateSurvivalObjective(ObjectiveTracker tracker)
         {
-            if (inventoryManager == null) return;
-            
-            // Count items in inventory
-            int count = 0;
-            string targetType = tracker.objective.targetResourceType;
-            
-            foreach (var item in inventoryManager.Inventory)
+            if (hasTimeLimit)
             {
-                if (string.IsNullOrEmpty(targetType) || item.itemType.ToString() == targetType)
-                {
-                    count++;
-                }
+                float survived = timeLimitInSeconds - timeRemaining;
+                tracker.UpdateProgress(survived);
             }
-            
-            tracker.UpdateProgress(count);
         }
 
-        private void UpdatePowerObjective(ObjectiveTracker tracker)
+        private void UpdateReachLocationObjective(ObjectiveTracker tracker)
         {
-            if (roverAttributes == null) return;
-            tracker.UpdateProgress(roverAttributes.CurrentPower);
+            if (roverAttributes == null || tracker.objective.targetLocation == null) return;
+            
+            float distance = Vector3.Distance(
+                roverAttributes.transform.position,
+                tracker.objective.targetLocation.position
+            );
+            
+            if (distance <= tracker.objective.targetValue)
+            {
+                tracker.UpdateProgress(tracker.objective.targetValue);
+            }
         }
 
         private void UpdateRepairObjective(ObjectiveTracker tracker)
         {
-            // Check if specific object is repaired
             if (signalTower != null && tracker.objective.targetObject == signalTower.gameObject)
             {
-                float progress = signalTower.CurrentState == SignalTower.TowerState.Active ? 1f : 0f;
-                tracker.UpdateProgress(progress);
+                if (signalTower.IsFullyActivated)
+                {
+                    tracker.UpdateProgress(tracker.objective.targetValue);
+                }
             }
         }
 
-        private void UpdateSurviveObjective(ObjectiveTracker tracker)
-        {
-            // Update based on time survived
-            if (hasTimeLimit)
-            {
-                float timePassed = timeLimitInSeconds - timeRemaining;
-                tracker.UpdateProgress(timePassed);
-            }
-        }
+        #endregion
 
-        private void OnItemCollected(CollectibleItem item)
-        {
-            Debug.Log($"Item collected: {item.itemName}");
-        }
-
-        private void OnSignalTowerActivated()
-        {
-            Debug.Log("Signal Tower Activated!");
-            // This will be caught by the repair objective
-        }
+        #region Level Completion
 
         private void HandleObjectiveCompleted(ObjectiveTracker tracker)
         {
-            Debug.Log($"✓ Objective Complete: {tracker.objective.objectiveTitle}");
+            Debug.Log($"✓ Objective Completed: {tracker.objective.objectiveTitle}");
             OnObjectiveCompleted?.Invoke(tracker);
         }
 
         private void CheckLevelCompletion()
         {
-            // Check if all required objectives are completed
-            bool allRequired = true;
+            // Check if all required objectives are complete
+            bool allRequiredComplete = true;
+            
             foreach (var tracker in objectiveTrackers)
             {
                 if (!tracker.objective.isOptional && !tracker.isCompleted)
                 {
-                    allRequired = false;
+                    allRequiredComplete = false;
                     break;
                 }
             }
             
-            if (allRequired)
+            if (allRequiredComplete)
             {
                 CompleteLevel();
             }
-        }
-
-        private void CheckFailureConditions()
-        {
-            // Add any additional failure conditions here
         }
 
         private void CompleteLevel()
@@ -265,12 +403,14 @@ namespace GameJam2026
             if (levelCompleted) return;
             
             levelCompleted = true;
-            Debug.Log($"=== LEVEL COMPLETE! ===");
+            Debug.Log($"✓✓✓ {levelName} COMPLETED! ✓✓✓");
             
             OnLevelCompleted?.Invoke();
-            
-            // Stop time or show victory screen
-            Time.timeScale = 0f;
+        }
+
+        private void CheckFailureConditions()
+        {
+            // Add any custom failure conditions here
         }
 
         private void FailLevel(string reason)
@@ -278,34 +418,33 @@ namespace GameJam2026
             if (levelFailed) return;
             
             levelFailed = true;
-            Debug.Log($"=== LEVEL FAILED: {reason} ===");
+            Debug.Log($"✗✗✗ {levelName} FAILED: {reason} ✗✗✗");
             
             OnLevelFailed?.Invoke();
-            
-            // Stop time or show failure screen
-            Time.timeScale = 0f;
         }
+
+        #endregion
 
         #region Public Methods
 
         public void RestartLevel()
         {
-            Time.timeScale = 1f;
             UnityEngine.SceneManagement.SceneManager.LoadScene(
-                UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
             );
         }
 
         public void LoadNextLevel()
         {
-            Time.timeScale = 1f;
-            // Load next level (implement based on your scene management)
-            UnityEngine.SceneManagement.SceneManager.LoadScene(levelNumber + 1);
-        }
-
-        public ObjectiveTracker GetObjective(string title)
-        {
-            return objectiveTrackers.FirstOrDefault(t => t.objective.objectiveTitle == title);
+            int nextSceneIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex + 1;
+            if (nextSceneIndex < UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings)
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneIndex);
+            }
+            else
+            {
+                Debug.Log("No next level available");
+            }
         }
 
         #endregion
@@ -321,10 +460,21 @@ namespace GameJam2026
             }
         }
 
-        [ContextMenu("Fail Level")]
-        private void DebugFailLevel()
+        [ContextMenu("Print Objective Status")]
+        private void DebugPrintStatus()
         {
-            FailLevel("Debug");
+            Debug.Log("=== OBJECTIVE STATUS ===");
+            foreach (var tracker in objectiveTrackers)
+            {
+                Debug.Log($"{tracker.objective.objectiveTitle}: {tracker.currentProgress}/{tracker.objective.targetValue} " +
+                         $"({tracker.ProgressPercentage * 100:F0}%) - {(tracker.isCompleted ? "COMPLETE" : "IN PROGRESS")}");
+            }
+            
+            Debug.Log("=== COLLECTED ITEMS ===");
+            foreach (var kvp in collectedItemCounts)
+            {
+                Debug.Log($"{kvp.Key}: {kvp.Value}");
+            }
         }
 
         #endregion
