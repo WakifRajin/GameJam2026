@@ -1,4 +1,4 @@
-# MARS ROVER: SIGNAL FROM THE RED PLANET
+# Stranded: Mars Odyssey
 
 ## GAME DESCRIPTION
 
