@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.InputSystem; // Add this
 
 namespace GameJam2026
 {
@@ -32,7 +33,7 @@ namespace GameJam2026
         
         [Header("Interaction")]
         [SerializeField] private float interactionRange = 5f;
-        [SerializeField] private KeyCode interactKey = KeyCode.F;
+        [SerializeField] private Key interactKey = Key.F; // Changed from KeyCode to Key
         [SerializeField] private GameObject interactionPromptUI;
         [SerializeField] private TextMeshProUGUI promptText;
         
@@ -95,7 +96,8 @@ namespace GameJam2026
             UpdateDistanceToPlayer();
             CheckPlayerDistance();
             
-            if (playerInRange && Input.GetKeyDown(interactKey))
+            // Changed to use Keyboard.current from new Input System
+            if (playerInRange && Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame)
             {
                 AttemptInteraction();
             }

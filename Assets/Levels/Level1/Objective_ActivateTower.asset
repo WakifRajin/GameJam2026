@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27db43c2f56573741945f80e1988513a, type: 3}
   m_Name: Objective_ActivateTower
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
-  objectiveTitle: Collect Power Cells
-  objectiveDescription: Gather power cells to energize the tower
-  type: 0
-  targetValue: 5
-  targetResourceType: PowerCell
+  objectiveTitle: Activate Signal Tower
+  objectiveDescription: Repair and power the signal tower before nightfall
+  type: 3
+  targetValue: 1
+  targetResourceType: 
   isOptional: 0
   targetObject: {fileID: 0}
   icon: {fileID: 0}
