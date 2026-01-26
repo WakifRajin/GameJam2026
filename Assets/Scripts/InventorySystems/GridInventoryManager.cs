@@ -43,9 +43,8 @@ namespace GameJam2026
         
         private void Awake()
         {
-            inventoryGrid = new CollectibleItem[gridWidth, gridHeight];
-            
-            // Initialize resources
+            inventoryGrid = new CollectibleItem[gridWidth, gridHeight]; // This line is crucial!
+    
             resources["Materials"] = 0f;
             resources["Tech"] = 0f;
             resources["Power"] = 0f;

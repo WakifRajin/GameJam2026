@@ -113,7 +113,10 @@ namespace GameJam2026
             if (isCollected) return;
 
             // Check if player/rover entered
-            if (other.CompareTag("Player") || other.GetComponent<RoverAttributeManager>() != null)
+            RoverAttributeManager rover = other.GetComponent<RoverAttributeManager>();
+            bool isPlayer = other.CompareTag("Player") || rover != null;
+            
+            if (isPlayer)
             {
                 TryCollect(other.gameObject);
             }
@@ -127,31 +130,45 @@ namespace GameJam2026
                 return;
             }
 
-            // Get the inventory from the collector
-            InventoryManager inventory = collector.GetComponent<InventoryManager>();
+            // UPDATED: Try to get GridInventoryManager first (new system)
+            GridInventoryManager gridInventory = collector.GetComponent<GridInventoryManager>();
             
-            if (inventory != null)
+            if (gridInventory != null)
             {
-                // Check if there's space (weight limit)
-                if (inventory.CanAddItem(itemData))
+                // NEW GRID-BASED SYSTEM
+                if (gridInventory.AddItem(itemData))
                 {
-                    // Add to inventory
-                    bool added = inventory.AddItem(itemData);
-                    
-                    if (added)
-                    {
-                        // Mark as collected
-                        Collect();
-                    }
+                    Collect();
                 }
                 else
                 {
-                    Debug.Log($"Cannot collect {itemData.itemName} - inventory full!");
+                    Debug.Log($"Cannot collect {itemData.itemName} - inventory full or overweight!");
                 }
             }
             else
             {
-                Debug.LogWarning($"Collector {collector.name} has no InventoryManager!");
+                // FALLBACK: Try old list-based inventory
+                InventoryManager oldInventory = collector.GetComponent<InventoryManager>();
+                
+                if (oldInventory != null)
+                {
+                    if (oldInventory.CanAddItem(itemData))
+                    {
+                        bool added = oldInventory.AddItem(itemData);
+                        if (added)
+                        {
+                            Collect();
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"Cannot collect {itemData.itemName} - inventory full!");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"Collector {collector.name} has no GridInventoryManager or InventoryManager!");
+                }
             }
         }
 
@@ -171,7 +188,7 @@ namespace GameJam2026
                 Instantiate(collectEffectPrefab, transform.position, Quaternion.identity);
             }
             
-            Debug.Log($"Collected: {itemData.itemName}");
+            Debug.Log($"✓ Collected: {itemData.itemName}");
             
             // Destroy the object
             Destroy(gameObject, 0.1f);

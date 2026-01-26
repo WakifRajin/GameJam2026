@@ -75,6 +75,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9b8308bc9d46d0e429a02f3f6c5a3e1a, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7612159253450018601}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9b8308bc9d46d0e429a02f3f6c5a3e1a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6104886415826945051}
   m_SourcePrefab: {fileID: 100100000, guid: 9b8308bc9d46d0e429a02f3f6c5a3e1a, type: 3}
 --- !u!1 &4903248470252306225 stripped
 GameObject:
@@ -96,9 +99,32 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 0.1589261, y: 0.2400677, z: 0.10652777}
   m_Center: {x: 0, y: 0.12003385, z: 0}
+--- !u!114 &6104886415826945051
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4903248470252306225}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c62d4c303a124284791eb49be1358b8e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.CollectibleItemObject
+  itemData: {fileID: 11400000, guid: 98b1c279ec3488940b2dcaed43bfc8ab, type: 2}
+  visualModel: {fileID: 4903248470252306225}
+  glowLight: {fileID: 0}
+  rotateItem: 1
+  rotationSpeed: 50
+  bobUpDown: 1
+  bobSpeed: 2
+  bobHeight: 0.3
+  collectionRadius: 3
+  collectSound: {fileID: 0}
+  collectEffectPrefab: {fileID: 0}
