@@ -132,7 +132,7 @@ MonoBehaviour:
   bobSpeed: 2
   bobHeight: 0.3
   collectionRadius: 3
-  collectSound: {fileID: 0}
+  collectSound: {fileID: 8300000, guid: 5e365ac38575c7c47ab566611e706f7d, type: 3}
   collectEffectPrefab: {fileID: 0}
 --- !u!1 &6181399382242604021 stripped
 GameObject:

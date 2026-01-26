@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -34,9 +35,14 @@ namespace GameJam2026
         [SerializeField] private bool failOnPowerDepletion = false;
         [SerializeField] private bool failOnTimeout = true;
         
+        [Header("Pause Settings")]
+        [SerializeField] private bool pauseOnComplete = true;
+        [SerializeField] private bool pauseOnFail = true;
+        [SerializeField] private float pauseDelay = 1.5f; // Time for animations to play
+        
         [Header("Debug")]
         [SerializeField] private bool enableDebugLogs = true;
-        [SerializeField] private bool enableTowerObjectiveDebug = true; // NEW: Extra tower debugging
+        [SerializeField] private bool enableTowerObjectiveDebug = true;
         
         private bool levelStarted = false;
         private bool levelCompleted = false;
@@ -287,7 +293,7 @@ namespace GameJam2026
                 Debug.Log($"Is fully activated: {signalTower.IsFullyActivated}");
             }
             
-            // Complete ALL tower-related objectives (no target object check needed)
+            // Complete ALL tower-related objectives (no target object check since we can't assign scene objects)
             foreach (var tracker in objectiveTrackers)
             {
                 if (tracker.isCompleted) continue;
@@ -307,6 +313,7 @@ namespace GameJam2026
                     else
                     {
                         Debug.LogWarning($"[LevelManager] Tower objective NOT completed - tower not fully activated!");
+                        Debug.LogWarning($"Tower state: {(signalTower != null ? signalTower.CurrentState.ToString() : "NULL")}");
                     }
                 }
             }
@@ -344,14 +351,6 @@ namespace GameJam2026
                     case ObjectiveType.RepairObject:
                     case ObjectiveType.ActivateObject:
                         // BLOCKED - these are event-driven only
-                        if (enableTowerObjectiveDebug)
-                        {
-                            // Check if someone is trying to update tower objectives
-                            if (objective.targetObject == signalTower?.gameObject)
-                            {
-                                Debug.LogWarning($"[LevelManager] Tower objective '{objective.objectiveTitle}' found in Update() - SKIPPING (event-driven only)");
-                            }
-                        }
                         break;
                 }
             }
@@ -510,8 +509,11 @@ namespace GameJam2026
             
             OnLevelCompleted?.Invoke();
             
-            // Pause game to show victory screen
-            Time.timeScale = 0f;
+            // Pause after delay to allow victory animation to play
+            if (pauseOnComplete)
+            {
+                StartCoroutine(PauseGameAfterDelay(pauseDelay));
+            }
         }
 
         private void CheckFailureConditions()
@@ -528,8 +530,26 @@ namespace GameJam2026
             
             OnLevelFailed?.Invoke();
             
-            // Pause game to show failure screen
+            // Pause after delay to allow defeat animation to play
+            if (pauseOnFail)
+            {
+                StartCoroutine(PauseGameAfterDelay(pauseDelay));
+            }
+        }
+
+        private IEnumerator PauseGameAfterDelay(float delay)
+        {
+            // Use unscaled time so this coroutine works even if timeScale changes
+            float elapsedTime = 0f;
+            
+            while (elapsedTime < delay)
+            {
+                elapsedTime += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            
             Time.timeScale = 0f;
+            Debug.Log($"Game paused after {delay}s animation delay");
         }
 
         #endregion

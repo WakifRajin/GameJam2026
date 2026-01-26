@@ -14,9 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
   objectiveTitle: Activate Signal Tower
   objectiveDescription: Repair and power the signal tower before nightfall
-  type: 3
+  objectiveIcon: {fileID: 0}
+  objectiveType: 4
   targetValue: 1
   targetResourceType: 
-  isOptional: 0
   targetObject: {fileID: 0}
-  icon: {fileID: 0}
+  targetLocation: {fileID: 0}
+  isOptional: 0
+  trackProgress: 1
