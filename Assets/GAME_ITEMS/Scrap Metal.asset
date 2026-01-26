@@ -14,12 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.CollectibleItem
   itemName: Scrap Metal
   description: A collectible item
-  icon: {fileID: 0}
+  icon: {fileID: 10915, guid: 0000000000000000f000000000000000, type: 0}
+  worldModelPrefab: {fileID: 0}
   itemType: 2
-  rarity: 0
+  resourceType: 
   weight: 2
+  stackSize: 1
   powerValue: 0
+  heatReduction: 0
   materialValue: 1
   techValue: 0
   glowColor: {r: 0.26090246, g: 0.38679248, b: 0.38679248, a: 1}
-  worldModelPrefab: {fileID: 0}
+  collectSound: {fileID: 0}

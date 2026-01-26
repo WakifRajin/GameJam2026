@@ -21,18 +21,22 @@ namespace GameJam2026
         
         [Header("Time Limit")]
         [SerializeField] private bool hasTimeLimit = true;
-        [SerializeField] private float timeLimitInSeconds = 300f; // 5 minutes
+        [SerializeField] private float timeLimitInSeconds = 300f;
         private float timeRemaining;
         
         [Header("References")]
         [SerializeField] private RoverAttributeManager roverAttributes;
-        [SerializeField] private GridInventoryManager gridInventoryManager; // UPDATED: Use new inventory
+        [SerializeField] private GridInventoryManager gridInventoryManager;
         [SerializeField] private DayNightCycle dayNightCycle;
         [SerializeField] private SignalTower signalTower;
         
         [Header("Win/Lose Conditions")]
         [SerializeField] private bool failOnPowerDepletion = false;
         [SerializeField] private bool failOnTimeout = true;
+        
+        [Header("Debug")]
+        [SerializeField] private bool enableDebugLogs = true;
+        [SerializeField] private bool enableTowerObjectiveDebug = true; // NEW: Extra tower debugging
         
         private bool levelStarted = false;
         private bool levelCompleted = false;
@@ -46,7 +50,7 @@ namespace GameJam2026
         public event Action OnLevelCompleted;
         public event Action OnLevelFailed;
         public event Action<ObjectiveTracker> OnObjectiveCompleted;
-        public event Action<float> OnTimeUpdated; // Time remaining
+        public event Action<float> OnTimeUpdated;
         
         public bool IsLevelActive => levelStarted && !levelCompleted && !levelFailed;
         public float TimeRemaining => timeRemaining;
@@ -59,7 +63,6 @@ namespace GameJam2026
             FindReferences();
             InitializeObjectives();
             
-            // Start level after a short delay
             Invoke(nameof(StartLevel), 1f);
         }
 
@@ -68,7 +71,6 @@ namespace GameJam2026
             if (roverAttributes == null)
                 roverAttributes = FindObjectOfType<RoverAttributeManager>();
             
-            // UPDATED: Find GridInventoryManager instead of old InventoryManager
             if (gridInventoryManager == null)
                 gridInventoryManager = FindObjectOfType<GridInventoryManager>();
             
@@ -77,6 +79,13 @@ namespace GameJam2026
             
             if (signalTower == null)
                 signalTower = FindObjectOfType<SignalTower>();
+            
+            DebugLog($"References found - Rover: {roverAttributes != null}, Inventory: {gridInventoryManager != null}, Tower: {signalTower != null}");
+            
+            if (signalTower != null)
+            {
+                Debug.Log($"[LevelManager] SignalTower found - Current state: {signalTower.CurrentState}");
+            }
         }
 
         private void InitializeObjectives()
@@ -93,10 +102,22 @@ namespace GameJam2026
                 }
                 
                 var tracker = new ObjectiveTracker { objective = objective };
+                
+                // Add progress tracking for tower objectives
+                if (objective.objectiveType == ObjectiveType.ActivateObject || 
+                    objective.objectiveType == ObjectiveType.RepairObject)
+                {
+                    tracker.OnProgressChanged += (t) => 
+                    {
+                        Debug.LogWarning($"[TOWER OBJECTIVE] Progress changed: {t.objective.objectiveTitle} -> {t.currentProgress}/{t.objective.targetValue}");
+                        Debug.LogWarning($"Stack trace:\n{System.Environment.StackTrace}");
+                    };
+                }
+                
                 tracker.OnCompleted += HandleObjectiveCompleted;
                 objectiveTrackers.Add(tracker);
                 
-                Debug.Log($"Initialized objective: {objective.objectiveTitle} (Type: {objective.objectiveType})");
+                DebugLog($"Initialized objective: {objective.objectiveTitle} (Type: {objective.objectiveType})");
             }
         }
 
@@ -110,10 +131,15 @@ namespace GameJam2026
             Debug.Log($"=== {levelName} Started ===");
             Debug.Log(levelDescription);
             
-            // Subscribe to events
             SubscribeToEvents();
             
             OnLevelStarted?.Invoke();
+            
+            // Print initial tower state
+            if (signalTower != null && enableTowerObjectiveDebug)
+            {
+                Debug.Log($"[LevelManager] Initial tower state: {signalTower.CurrentState}");
+            }
         }
 
         private void Update()
@@ -132,38 +158,38 @@ namespace GameJam2026
                 }
             }
             
-            // Check for failure conditions
             CheckFailureConditions();
-            
-            // Update objectives
             UpdateObjectives();
-            
-            // Check for level completion
             CheckLevelCompletion();
         }
 
         private void SubscribeToEvents()
         {
-            if (roverAttributes != null)
+            if (roverAttributes != null && failOnPowerDepletion)
             {
                 roverAttributes.OnPowerDepleted += HandlePowerDepleted;
             }
             
-            // UPDATED: Subscribe to GridInventoryManager events
             if (gridInventoryManager != null)
             {
                 gridInventoryManager.OnItemAddedToGrid += HandleItemCollected;
                 gridInventoryManager.OnResourceChanged += HandleResourceChanged;
-                Debug.Log("✓ Subscribed to GridInventoryManager events");
+                DebugLog("✓ Subscribed to GridInventoryManager events");
             }
             else
             {
-                Debug.LogError("LevelManager: GridInventoryManager not found! Objectives won't update.");
+                Debug.LogError("LevelManager: GridInventoryManager not found!");
             }
             
             if (signalTower != null)
             {
                 signalTower.OnTowerActivated += HandleTowerActivated;
+                signalTower.OnTowerRepaired += HandleTowerRepaired;
+                DebugLog("✓ Subscribed to SignalTower events (OnTowerActivated, OnTowerRepaired)");
+            }
+            else
+            {
+                Debug.LogError("LevelManager: SignalTower not found!");
             }
         }
 
@@ -179,7 +205,6 @@ namespace GameJam2026
                 roverAttributes.OnPowerDepleted -= HandlePowerDepleted;
             }
             
-            // UPDATED: Unsubscribe from GridInventoryManager
             if (gridInventoryManager != null)
             {
                 gridInventoryManager.OnItemAddedToGrid -= HandleItemCollected;
@@ -189,17 +214,23 @@ namespace GameJam2026
             if (signalTower != null)
             {
                 signalTower.OnTowerActivated -= HandleTowerActivated;
+                signalTower.OnTowerRepaired -= HandleTowerRepaired;
             }
         }
 
         #region Event Handlers
 
-        // UPDATED: Handle item collection from GridInventoryManager
         private void HandleItemCollected(CollectibleItem item, int x, int y)
         {
             if (item == null) return;
             
-            Debug.Log($"LevelManager: Item collected - {item.itemName} (Type: {item.itemType})");
+            DebugLog($"Item collected: {item.itemName} (Type: {item.itemType})");
+            
+            // IMPORTANT: Check tower state when item is collected
+            if (signalTower != null && enableTowerObjectiveDebug)
+            {
+                Debug.Log($"[LevelManager] Tower state after item collection: {signalTower.CurrentState}");
+            }
             
             // Track by item type
             string itemTypeKey = item.itemType.ToString();
@@ -209,9 +240,9 @@ namespace GameJam2026
             }
             collectedItemCounts[itemTypeKey]++;
             
-            // Track by resource type (for specific objectives)
-            string resourceKey = item.resourceType;
-            if (!string.IsNullOrEmpty(resourceKey))
+            // Track by resource type if available
+            string resourceKey = GetResourceTypeFromItem(item);
+            if (!string.IsNullOrEmpty(resourceKey) && resourceKey != itemTypeKey)
             {
                 if (!collectedItemCounts.ContainsKey(resourceKey))
                 {
@@ -220,88 +251,70 @@ namespace GameJam2026
                 collectedItemCounts[resourceKey]++;
             }
             
-            // Update relevant objectives
+            DebugLog($"Tracked: {itemTypeKey} count = {collectedItemCounts[itemTypeKey]}");
+            
+            // Update ONLY collection objectives
             UpdateCollectionObjectives();
         }
 
         private void HandleResourceChanged(string resourceType, float amount)
         {
-            Debug.Log($"LevelManager: Resource changed - {resourceType}: {amount}");
+            DebugLog($"Resource changed: {resourceType} = {amount}");
+            
+            // Update ONLY collection objectives
             UpdateCollectionObjectives();
         }
 
-        private void UpdateCollectionObjectives()
+        private void HandleTowerRepaired()
         {
+            Debug.Log("=== TOWER REPAIRED EVENT RECEIVED ===");
+            
+            if (signalTower != null)
+            {
+                Debug.Log($"Tower state after repair: {signalTower.CurrentState}");
+            }
+            
+            // Don't complete objectives on repair - only on activation!
+        }
+
+        private void HandleTowerActivated()
+        {
+            Debug.Log("=== TOWER ACTIVATED EVENT RECEIVED ===");
+            
+            if (signalTower != null)
+            {
+                Debug.Log($"Tower state: {signalTower.CurrentState}");
+                Debug.Log($"Is fully activated: {signalTower.IsFullyActivated}");
+            }
+            
+            // Complete ALL tower-related objectives (no target object check needed)
             foreach (var tracker in objectiveTrackers)
             {
                 if (tracker.isCompleted) continue;
                 
                 var objective = tracker.objective;
                 
-                switch (objective.objectiveType)
+                // Check if this objective is about activating/repairing tower
+                if (objective.objectiveType == ObjectiveType.ActivateObject ||
+                    objective.objectiveType == ObjectiveType.RepairObject)
                 {
-                    case ObjectiveType.CollectItems:
-                        UpdateCollectItemsObjective(tracker);
-                        break;
-                }
-            }
-        }
-
-        private void UpdateCollectItemsObjective(ObjectiveTracker tracker)
-        {
-            var objective = tracker.objective;
-            
-            // Count items by resource type
-            if (!string.IsNullOrEmpty(objective.targetResourceType))
-            {
-                // Check by resource type (e.g., "Material", "PowerCell")
-                if (collectedItemCounts.ContainsKey(objective.targetResourceType))
-                {
-                    int count = collectedItemCounts[objective.targetResourceType];
-                    tracker.UpdateProgress(count);
-                    Debug.Log($"Objective '{objective.objectiveTitle}': {count}/{objective.targetValue}");
-                }
-                else
-                {
-                    // Try checking resources in inventory
-                    if (gridInventoryManager != null)
+                    // Since there's only ONE tower in the level, complete any tower objective
+                    if (signalTower != null && signalTower.IsFullyActivated)
                     {
-                        float resourceAmount = gridInventoryManager.GetResource(objective.targetResourceType);
-                        tracker.UpdateProgress(resourceAmount);
-                        Debug.Log($"Objective '{objective.objectiveTitle}' (Resource): {resourceAmount}/{objective.targetValue}");
+                        Debug.Log($"[LevelManager] ✓ Completing tower objective: {objective.objectiveTitle}");
+                        tracker.UpdateProgress(objective.targetValue);
                     }
-                }
-            }
-            else
-            {
-                // Count all items in inventory
-                if (gridInventoryManager != null)
-                {
-                    tracker.UpdateProgress(gridInventoryManager.UsedSlots);
-                }
-            }
-        }
-
-        private void HandleTowerActivated()
-        {
-            Debug.Log("LevelManager: Tower activated!");
-            
-            foreach (var tracker in objectiveTrackers)
-            {
-                if (tracker.objective.objectiveType == ObjectiveType.RepairObject ||
-                    tracker.objective.objectiveType == ObjectiveType.ActivateObject)
-                {
-                    tracker.UpdateProgress(tracker.objective.targetValue);
+                    else
+                    {
+                        Debug.LogWarning($"[LevelManager] Tower objective NOT completed - tower not fully activated!");
+                    }
                 }
             }
         }
 
         private void HandlePowerDepleted()
         {
-            if (failOnPowerDepletion)
-            {
-                FailLevel("Power depleted!");
-            }
+            FailLevel("Power depleted!");
         }
 
         #endregion
@@ -326,9 +339,66 @@ namespace GameJam2026
                         UpdateReachLocationObjective(tracker);
                         break;
                         
+                    // CRITICAL: DO NOT UPDATE TOWER OBJECTIVES HERE
+                    // Tower objectives are ONLY updated via HandleTowerActivated event
                     case ObjectiveType.RepairObject:
-                        UpdateRepairObjective(tracker);
+                    case ObjectiveType.ActivateObject:
+                        // BLOCKED - these are event-driven only
+                        if (enableTowerObjectiveDebug)
+                        {
+                            // Check if someone is trying to update tower objectives
+                            if (objective.targetObject == signalTower?.gameObject)
+                            {
+                                Debug.LogWarning($"[LevelManager] Tower objective '{objective.objectiveTitle}' found in Update() - SKIPPING (event-driven only)");
+                            }
+                        }
                         break;
+                }
+            }
+        }
+
+        private void UpdateCollectionObjectives()
+        {
+            foreach (var tracker in objectiveTrackers)
+            {
+                if (tracker.isCompleted) continue;
+                
+                if (tracker.objective.objectiveType == ObjectiveType.CollectItems)
+                {
+                    UpdateCollectItemsObjective(tracker);
+                }
+            }
+        }
+
+        private void UpdateCollectItemsObjective(ObjectiveTracker tracker)
+        {
+            var objective = tracker.objective;
+            
+            if (!string.IsNullOrEmpty(objective.targetResourceType))
+            {
+                // Check collected items count
+                if (collectedItemCounts.ContainsKey(objective.targetResourceType))
+                {
+                    int count = collectedItemCounts[objective.targetResourceType];
+                    tracker.UpdateProgress(count);
+                    DebugLog($"Objective '{objective.objectiveTitle}': {count}/{objective.targetValue}");
+                }
+                else
+                {
+                    // Check resources in inventory
+                    if (gridInventoryManager != null)
+                    {
+                        float resourceAmount = gridInventoryManager.GetResource(objective.targetResourceType);
+                        tracker.UpdateProgress(resourceAmount);
+                    }
+                }
+            }
+            else
+            {
+                // Count all items
+                if (gridInventoryManager != null)
+                {
+                    tracker.UpdateProgress(gridInventoryManager.UsedSlots);
                 }
             }
         }
@@ -344,37 +414,50 @@ namespace GameJam2026
 
         private void UpdateReachLocationObjective(ObjectiveTracker tracker)
         {
-            if (roverAttributes == null || tracker.objective.targetLocation == null) return;
+            if (roverAttributes == null) return;
             
-            float distance = Vector3.Distance(
-                roverAttributes.transform.position,
-                tracker.objective.targetLocation.position
-            );
-            
-            if (distance <= tracker.objective.targetValue)
+            if (tracker.objective.targetObject != null)
             {
-                tracker.UpdateProgress(tracker.objective.targetValue);
+                float distance = Vector3.Distance(
+                    roverAttributes.transform.position,
+                    tracker.objective.targetObject.transform.position
+                );
+                
+                if (distance <= tracker.objective.targetValue)
+                {
+                    tracker.UpdateProgress(tracker.objective.targetValue);
+                }
+            }
+            else if (tracker.objective.targetLocation != null)
+            {
+                float distance = Vector3.Distance(
+                    roverAttributes.transform.position,
+                    tracker.objective.targetLocation.position
+                );
+                
+                if (distance <= tracker.objective.targetValue)
+                {
+                    tracker.UpdateProgress(tracker.objective.targetValue);
+                }
             }
         }
 
-        private void UpdateRepairObjective(ObjectiveTracker tracker)
-    {
-        // Check if specific object is repaired
-        if (signalTower != null && tracker.objective.targetObject == signalTower.gameObject)
+        private string GetResourceTypeFromItem(CollectibleItem item)
         {
-            // IMPORTANT: Check for FULLY ACTIVATED, not just repaired
-            // Only mark complete when tower is Active, not Repaired
-            if (signalTower.IsFullyActivated)
+            // Try to get resourceType via reflection
+            var field = item.GetType().GetField("resourceType");
+            if (field != null)
             {
-                tracker.UpdateProgress(tracker.objective.targetValue);
+                string value = field.GetValue(item) as string;
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
             }
-            else
-            {
-                // Tower exists but not activated - progress should be 0
-                tracker.UpdateProgress(0);
-            }
+            
+            // Fallback to itemType
+            return item.itemType.ToString();
         }
-    }
 
         #endregion
 
@@ -383,12 +466,24 @@ namespace GameJam2026
         private void HandleObjectiveCompleted(ObjectiveTracker tracker)
         {
             Debug.Log($"✓ Objective Completed: {tracker.objective.objectiveTitle}");
+            Debug.Log($"Progress: {tracker.currentProgress}/{tracker.objective.targetValue}");
+            
+            // Extra logging for tower objectives
+            if (tracker.objective.objectiveType == ObjectiveType.ActivateObject ||
+                tracker.objective.objectiveType == ObjectiveType.RepairObject)
+            {
+                Debug.Log($"[TOWER OBJECTIVE COMPLETED] {tracker.objective.objectiveTitle}");
+                if (signalTower != null)
+                {
+                    Debug.Log($"Tower state when objective completed: {signalTower.CurrentState}");
+                }
+            }
+            
             OnObjectiveCompleted?.Invoke(tracker);
         }
 
         private void CheckLevelCompletion()
         {
-            // Check if all required objectives are complete
             bool allRequiredComplete = true;
             
             foreach (var tracker in objectiveTrackers)
@@ -414,11 +509,14 @@ namespace GameJam2026
             Debug.Log($"✓✓✓ {levelName} COMPLETED! ✓✓✓");
             
             OnLevelCompleted?.Invoke();
+            
+            // Pause game to show victory screen
+            Time.timeScale = 0f;
         }
 
         private void CheckFailureConditions()
         {
-            // Add any custom failure conditions here
+            // Add custom failure conditions here if needed
         }
 
         private void FailLevel(string reason)
@@ -429,6 +527,9 @@ namespace GameJam2026
             Debug.Log($"✗✗✗ {levelName} FAILED: {reason} ✗✗✗");
             
             OnLevelFailed?.Invoke();
+            
+            // Pause game to show failure screen
+            Time.timeScale = 0f;
         }
 
         #endregion
@@ -437,34 +538,65 @@ namespace GameJam2026
 
         public void RestartLevel()
         {
+            Time.timeScale = 1f;
             UnityEngine.SceneManagement.SceneManager.LoadScene(
-                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex
             );
         }
 
         public void LoadNextLevel()
         {
+            Time.timeScale = 1f;
+            
             int nextSceneIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex + 1;
-            if (nextSceneIndex < UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings)
+            int totalScenes = UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings;
+            
+            if (nextSceneIndex < totalScenes)
             {
                 UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneIndex);
             }
             else
             {
-                Debug.Log("No next level available");
+                Debug.Log("No next level available. This was the last level!");
             }
+        }
+
+        public ObjectiveTracker GetObjective(string title)
+        {
+            return objectiveTrackers.Find(t => t.objective.objectiveTitle == title);
+        }
+
+        public void ForceCompleteLevel()
+        {
+            CompleteLevel();
+        }
+
+        public void ForceFailLevel(string reason = "Debug")
+        {
+            FailLevel(reason);
         }
 
         #endregion
 
-        #region Debug
+        private void DebugLog(string message)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"[LevelManager] {message}");
+            }
+        }
+
+        #region Debug Methods
 
         [ContextMenu("Complete All Objectives")]
-        private void DebugCompleteAll()
+        private void DebugCompleteAllObjectives()
         {
             foreach (var tracker in objectiveTrackers)
             {
-                tracker.UpdateProgress(tracker.objective.targetValue);
+                if (!tracker.isCompleted)
+                {
+                    tracker.UpdateProgress(tracker.objective.targetValue);
+                }
             }
         }
 
@@ -474,8 +606,15 @@ namespace GameJam2026
             Debug.Log("=== OBJECTIVE STATUS ===");
             foreach (var tracker in objectiveTrackers)
             {
+                string status = tracker.isCompleted ? "✓ COMPLETE" : "IN PROGRESS";
                 Debug.Log($"{tracker.objective.objectiveTitle}: {tracker.currentProgress}/{tracker.objective.targetValue} " +
-                         $"({tracker.ProgressPercentage * 100:F0}%) - {(tracker.isCompleted ? "COMPLETE" : "IN PROGRESS")}");
+                         $"({tracker.ProgressPercentage * 100:F0}%) - {status}");
+                
+                if (tracker.objective.objectiveType == ObjectiveType.ActivateObject ||
+                    tracker.objective.objectiveType == ObjectiveType.RepairObject)
+                {
+                    Debug.Log($"  -> Tower objective, target: {(tracker.objective.targetObject != null ? tracker.objective.targetObject.name : "NULL")}");
+                }
             }
             
             Debug.Log("=== COLLECTED ITEMS ===");
@@ -483,6 +622,31 @@ namespace GameJam2026
             {
                 Debug.Log($"{kvp.Key}: {kvp.Value}");
             }
+            
+            if (signalTower != null)
+            {
+                Debug.Log($"=== TOWER STATUS ===");
+                Debug.Log($"State: {signalTower.CurrentState}");
+                Debug.Log($"Is Fully Activated: {signalTower.IsFullyActivated}");
+            }
+        }
+
+        [ContextMenu("Reset Level")]
+        private void DebugResetLevel()
+        {
+            RestartLevel();
+        }
+
+        [ContextMenu("Complete Level")]
+        private void DebugCompleteLevel()
+        {
+            ForceCompleteLevel();
+        }
+
+        [ContextMenu("Fail Level")]
+        private void DebugFailLevel()
+        {
+            ForceFailLevel("Debug");
         }
 
         #endregion

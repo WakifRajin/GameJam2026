@@ -7,7 +7,7 @@ namespace GameJam2026
 {
     /// <summary>
     /// The signal tower that needs to be repaired and powered
-    /// Always visible, distance tracked for navigation via RoverUIManager
+    /// MANUAL INTERACTION ONLY - No auto-activation
     /// </summary>
     public class SignalTower : MonoBehaviour
     {
@@ -42,31 +42,41 @@ namespace GameJam2026
         [SerializeField] private AudioClip activationSound;
         [SerializeField] private AudioSource audioSource;
         
-        [Header("Debug")]
-        [SerializeField] private bool enableDebugLogs = true;
-        
-        private TowerState currentState = TowerState.Broken;
+        // IMPORTANT: Private state - cannot be changed externally
+        private TowerState _currentState = TowerState.Broken;
         private int currentScrapMetal = 0;
         private float currentPower = 0f;
         private GameObject player;
         private bool playerInRange = false;
         private float distanceToPlayer = 0f;
         
-        // Prevent accidental auto-activation
-        private bool manualActivationOnly = true;
-        
+        // Events
         public event System.Action OnTowerRepaired;
         public event System.Action OnTowerActivated;
         
-        public TowerState CurrentState => currentState;
-        public bool IsFullyActivated => currentState == TowerState.Active;
+        // PUBLIC READ-ONLY PROPERTIES
+        public TowerState CurrentState => _currentState;
+        public bool IsFullyActivated => _currentState == TowerState.Active;
+        public bool IsRepaired => _currentState == TowerState.Repaired || _currentState == TowerState.Active;
         public float DistanceToPlayer => distanceToPlayer;
-        public bool IsRepaired => currentState == TowerState.Repaired || currentState == TowerState.Active;
+        public int ScrapMetalRequired => scrapMetalRequired;
+        public float PowerRequired => powerRequired;
+
+        private void Awake()
+        {
+            // FORCE state to Broken - this runs before Start()
+            _currentState = TowerState.Broken;
+            Debug.Log($"[SignalTower Awake] State forced to: {_currentState}");
+        }
 
         private void Start()
         {
-            // IMPORTANT: Force state to Broken on start
-            currentState = TowerState.Broken;
+            // SAFETY CHECK - ensure still broken
+            if (_currentState != TowerState.Broken)
+            {
+                Debug.LogError($"[SignalTower] State was changed to {_currentState} before Start()! Resetting to Broken.");
+                _currentState = TowerState.Broken;
+            }
             
             // Find player
             player = GameObject.FindGameObjectWithTag("Player");
@@ -94,15 +104,15 @@ namespace GameJam2026
             // Validate references
             if (gridInventoryManager == null)
             {
-                Debug.LogError("SignalTower: GridInventoryManager not found on player!");
+                Debug.LogError("[SignalTower] GridInventoryManager not found on player!");
             }
             
             if (roverAttributes == null)
             {
-                Debug.LogError("SignalTower: RoverAttributeManager not found on player!");
+                Debug.LogError("[SignalTower] RoverAttributeManager not found on player!");
             }
             
-            // Always show the tower from the start
+            // Setup visuals
             UpdateVisualState();
             
             if (interactionPromptUI != null)
@@ -110,11 +120,7 @@ namespace GameJam2026
                 interactionPromptUI.SetActive(false);
             }
             
-            DebugLog($"SignalTower initialized at {transform.position}");
-            DebugLog($"- State: {currentState}");
-            DebugLog($"- Scrap Required: {scrapMetalRequired}");
-            DebugLog($"- Power Required: {powerRequired}");
-            DebugLog($"- Manual Activation Only: {manualActivationOnly}");
+            Debug.Log($"[SignalTower] Initialized - State: {_currentState}, Scrap needed: {scrapMetalRequired}, Power needed: {powerRequired}");
         }
 
         private void Update()
@@ -122,10 +128,10 @@ namespace GameJam2026
             UpdateDistanceToPlayer();
             CheckPlayerDistance();
             
-            // Check for interaction input
+            // Check for interaction input (F key)
             if (playerInRange && Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame)
             {
-                DebugLog($"Interact key pressed! Current state: {currentState}");
+                Debug.Log($"[SignalTower] F key pressed - Current state: {_currentState}");
                 AttemptInteraction();
             }
             
@@ -145,16 +151,10 @@ namespace GameJam2026
             bool wasInRange = playerInRange;
             playerInRange = distanceToPlayer <= interactionRange;
             
-            if (playerInRange != wasInRange)
+            if (playerInRange != wasInRange && interactionPromptUI != null)
             {
-                DebugLog($"Player in range changed: {playerInRange} (Distance: {distanceToPlayer:F2}m)");
-                
-                if (interactionPromptUI != null)
-                {
-                    bool shouldShow = playerInRange && currentState != TowerState.Active;
-                    interactionPromptUI.SetActive(shouldShow);
-                    DebugLog($"Prompt UI set to: {shouldShow}");
-                }
+                bool shouldShow = playerInRange && _currentState != TowerState.Active;
+                interactionPromptUI.SetActive(shouldShow);
             }
         }
 
@@ -162,7 +162,7 @@ namespace GameJam2026
         {
             if (!playerInRange || promptText == null) return;
             
-            switch (currentState)
+            switch (_currentState)
             {
                 case TowerState.Broken:
                     int haveScrap = GetPlayerScrapMetal();
@@ -179,17 +179,16 @@ namespace GameJam2026
                     break;
                     
                 case TowerState.Active:
-                    promptText.text = "Tower Online - Signal Transmitting!";
+                    promptText.text = "✓ Tower Online - Signal Transmitting!";
                     break;
             }
         }
 
         private void AttemptInteraction()
         {
-            DebugLog($"=== AttemptInteraction called ===");
-            DebugLog($"Current State: {currentState}");
+            Debug.Log($"[SignalTower] === INTERACTION ATTEMPT === State: {_currentState}");
             
-            switch (currentState)
+            switch (_currentState)
             {
                 case TowerState.Broken:
                     AttemptRepair();
@@ -200,7 +199,7 @@ namespace GameJam2026
                     break;
                     
                 case TowerState.Active:
-                    DebugLog("Tower already active!");
+                    Debug.Log("[SignalTower] Tower is already active!");
                     break;
             }
         }
@@ -209,20 +208,16 @@ namespace GameJam2026
         {
             int playerScrap = GetPlayerScrapMetal();
             
-            DebugLog($"=== Attempting REPAIR ===");
-            DebugLog($"Need: {scrapMetalRequired}, Have: {playerScrap}");
+            Debug.Log($"[SignalTower] Repair attempt - Need: {scrapMetalRequired}, Have: {playerScrap}");
             
             if (playerScrap >= scrapMetalRequired)
             {
-                // Consume scrap metal from inventory
                 ConsumeScrapMetal(scrapMetalRequired);
-                
-                // Repair tower
                 RepairTower();
             }
             else
             {
-                Debug.LogWarning($"❌ Not enough scrap metal! Need {scrapMetalRequired}, have {playerScrap}");
+                Debug.LogWarning($"[SignalTower] ❌ Insufficient scrap! Need {scrapMetalRequired}, have {playerScrap}");
             }
         }
 
@@ -230,100 +225,90 @@ namespace GameJam2026
         {
             float havePower = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
             
-            DebugLog($"=== Attempting ACTIVATION ===");
-            DebugLog($"Need: {powerRequired}, Have: {havePower:F0}");
+            Debug.Log($"[SignalTower] Activation attempt - Need: {powerRequired}, Have: {havePower:F0}");
             
             if (roverAttributes != null && havePower >= powerRequired)
             {
-                // Consume power
                 roverAttributes.ModifyPower(-powerRequired);
-                
-                // Activate tower
                 ActivateTower();
             }
             else
             {
-                Debug.LogWarning($"❌ Not enough power! Need {powerRequired}, have {havePower:F0}");
+                Debug.LogWarning($"[SignalTower] ❌ Insufficient power! Need {powerRequired}, have {havePower:F0}");
             }
         }
 
         private void RepairTower()
         {
-            if (currentState != TowerState.Broken)
+            // SAFETY CHECK
+            if (_currentState != TowerState.Broken)
             {
-                Debug.LogWarning($"RepairTower called but tower is already {currentState}!");
+                Debug.LogError($"[SignalTower] RepairTower called but state is {_currentState}, not Broken! BLOCKING.");
+                Debug.LogError($"Stack trace: {System.Environment.StackTrace}");
                 return;
             }
             
-            DebugLog("=== REPAIRING TOWER ===");
+            Debug.Log("[SignalTower] === REPAIRING TOWER ===");
             
-            currentState = TowerState.Repaired;
+            _currentState = TowerState.Repaired;
             currentScrapMetal = scrapMetalRequired;
             
             UpdateVisualState();
             
             if (repairEffect != null)
-            {
                 repairEffect.Play();
-            }
             
             if (audioSource != null && repairSound != null)
-            {
                 audioSource.PlayOneShot(repairSound);
-            }
             
             OnTowerRepaired?.Invoke();
-            Debug.Log("✓ Tower Repaired! Now needs power to activate.");
+            
+            Debug.Log("[SignalTower] ✓ Tower Repaired! Now needs power to activate.");
         }
 
         private void ActivateTower()
         {
-            if (currentState != TowerState.Repaired)
+            // SAFETY CHECK
+            if (_currentState != TowerState.Repaired)
             {
-                Debug.LogWarning($"ActivateTower called but tower state is {currentState}, not Repaired!");
+                Debug.LogError($"[SignalTower] ActivateTower called but state is {_currentState}, not Repaired! BLOCKING.");
+                Debug.LogError($"Stack trace: {System.Environment.StackTrace}");
                 return;
             }
             
-            DebugLog("=== ACTIVATING TOWER ===");
+            Debug.Log("[SignalTower] === ACTIVATING TOWER ===");
             
-            currentState = TowerState.Active;
+            _currentState = TowerState.Active;
             currentPower = powerRequired;
             
             UpdateVisualState();
             
             if (activationEffect != null)
-            {
                 activationEffect.Play();
-            }
             
             if (audioSource != null && activationSound != null)
-            {
                 audioSource.PlayOneShot(activationSound);
-            }
             
             if (interactionPromptUI != null)
-            {
                 interactionPromptUI.SetActive(false);
-            }
             
             OnTowerActivated?.Invoke();
-            Debug.Log("✓✓✓ Tower Activated! Distress signal sent! ✓✓✓");
+            
+            Debug.Log("[SignalTower] ✓✓✓ TOWER ACTIVATED! Distress signal sent! ✓✓✓");
         }
 
         private void UpdateVisualState()
         {
-            // Update models based on state
             if (brokenModel != null) 
-                brokenModel.SetActive(currentState == TowerState.Broken);
+                brokenModel.SetActive(_currentState == TowerState.Broken);
             if (repairedModel != null) 
-                repairedModel.SetActive(currentState == TowerState.Repaired);
+                repairedModel.SetActive(_currentState == TowerState.Repaired);
             if (activeModel != null) 
-                activeModel.SetActive(currentState == TowerState.Active);
+                activeModel.SetActive(_currentState == TowerState.Active);
             
-            // Update light color and intensity based on state
             if (towerLight != null)
             {
-                switch (currentState)
+                switch (_currentState)
                 {
                     case TowerState.Broken:
                         towerLight.color = brokenColor;
@@ -342,22 +327,15 @@ namespace GameJam2026
                         break;
                 }
             }
-            
-            DebugLog($"Tower visual updated to: {currentState}");
         }
 
         private int GetPlayerScrapMetal()
         {
-            if (gridInventoryManager == null) 
-            {
-                Debug.LogWarning("GridInventoryManager is null!");
-                return 0;
-            }
+            if (gridInventoryManager == null) return 0;
             
             int count = 0;
             var grid = gridInventoryManager.InventoryGrid;
             
-            // Count items in grid that are Materials
             for (int y = 0; y < gridInventoryManager.GridHeight; y++)
             {
                 for (int x = 0; x < gridInventoryManager.GridWidth; x++)
@@ -380,7 +358,6 @@ namespace GameJam2026
             int consumed = 0;
             var grid = gridInventoryManager.InventoryGrid;
             
-            // Find and remove scrap metal items
             for (int y = 0; y < gridInventoryManager.GridHeight && consumed < amount; y++)
             {
                 for (int x = 0; x < gridInventoryManager.GridWidth && consumed < amount; x++)
@@ -390,51 +367,17 @@ namespace GameJam2026
                     {
                         gridInventoryManager.RemoveItemAt(x, y);
                         consumed++;
-                        DebugLog($"Consumed scrap metal {consumed}/{amount}");
                     }
                 }
             }
             
-            DebugLog($"✓ Consumed {consumed} scrap metal");
-        }
-
-        // PUBLIC METHOD - Only for manual/scripted activation
-        public void ForceRepair()
-        {
-            if (currentState == TowerState.Broken)
-            {
-                Debug.Log("ForceRepair called - skipping requirements");
-                RepairTower();
-            }
-        }
-
-        public void ForceActivate()
-        {
-            if (currentState == TowerState.Repaired)
-            {
-                Debug.Log("ForceActivate called - skipping requirements");
-                ActivateTower();
-            }
-        }
-
-        private void DebugLog(string message)
-        {
-            if (enableDebugLogs)
-            {
-                Debug.Log($"[SignalTower] {message}");
-            }
+            Debug.Log($"[SignalTower] Consumed {consumed} scrap metal");
         }
 
         private void OnDrawGizmosSelected()
         {
-            // Draw interaction range
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(transform.position, interactionRange);
-            
-            // Draw label
-            #if UNITY_EDITOR
-            UnityEditor.Handles.Label(transform.position + Vector3.up * 3f, $"Signal Tower\nState: {currentState}");
-            #endif
         }
 
         public enum TowerState
@@ -446,46 +389,25 @@ namespace GameJam2026
         
         #region Debug Methods
         
-        [ContextMenu("Force Repair Tower")]
-        private void DebugRepairTower()
+        [ContextMenu("Print Tower Status")]
+        private void DebugPrintStatus()
         {
-            ForceRepair();
-        }
-        
-        [ContextMenu("Force Activate Tower")]
-        private void DebugActivateTower()
-        {
-            if (currentState == TowerState.Broken)
-            {
-                ForceRepair();
-            }
-            if (currentState == TowerState.Repaired)
-            {
-                ForceActivate();
-            }
+            Debug.Log("=== SIGNAL TOWER STATUS ===");
+            Debug.Log($"Current State: {_currentState}");
+            Debug.Log($"Player in range: {playerInRange} ({distanceToPlayer:F2}m)");
+            Debug.Log($"Scrap in inventory: {GetPlayerScrapMetal()}/{scrapMetalRequired}");
+            Debug.Log($"Rover power: {(roverAttributes != null ? roverAttributes.CurrentPower : 0f):F0}/{powerRequired}");
+            Debug.Log($"Prompt active: {(interactionPromptUI != null ? interactionPromptUI.activeSelf : false)}");
         }
         
         [ContextMenu("Reset Tower")]
         private void DebugResetTower()
         {
-            currentState = TowerState.Broken;
+            _currentState = TowerState.Broken;
             currentScrapMetal = 0;
             currentPower = 0;
             UpdateVisualState();
-            Debug.Log("Tower reset to broken state");
-        }
-        
-        [ContextMenu("Print Tower Status")]
-        private void DebugPrintStatus()
-        {
-            Debug.Log("=== SIGNAL TOWER STATUS ===");
-            Debug.Log($"State: {currentState}");
-            Debug.Log($"Player in range: {playerInRange} (Distance: {distanceToPlayer:F2}m)");
-            Debug.Log($"GridInventoryManager: {(gridInventoryManager != null ? "Found" : "NULL")}");
-            Debug.Log($"RoverAttributes: {(roverAttributes != null ? "Found" : "NULL")}");
-            Debug.Log($"Scrap metal in inventory: {GetPlayerScrapMetal()}");
-            Debug.Log($"Rover power: {(roverAttributes != null ? roverAttributes.CurrentPower.ToString("F0") : "N/A")}");
-            Debug.Log($"Interaction prompt active: {(interactionPromptUI != null ? interactionPromptUI.activeSelf.ToString() : "NULL")}");
+            Debug.Log("[SignalTower] Tower reset to Broken state");
         }
         
         #endregion

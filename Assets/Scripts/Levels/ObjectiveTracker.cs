@@ -17,14 +17,34 @@ namespace GameJam2026
         public event Action<ObjectiveTracker> OnProgressChanged;
         public event Action<ObjectiveTracker> OnCompleted;
         
-        public float ProgressPercentage => Mathf.Clamp01(currentProgress / objective.targetValue);
+        public float ProgressPercentage => objective != null ? Mathf.Clamp01(currentProgress / objective.targetValue) : 0f;
         
         public void UpdateProgress(float newProgress)
         {
-            if (isCompleted) return;
+            if (isCompleted) 
+            {
+                Debug.LogWarning($"[ObjectiveTracker] UpdateProgress called on already completed objective: {objective?.objectiveTitle}");
+                return;
+            }
             
+            // LOG EVERY PROGRESS UPDATE with stack trace
+            if (objective.objectiveType == ObjectiveType.ActivateObject || 
+                objective.objectiveType == ObjectiveType.RepairObject)
+            {
+                Debug.LogWarning($"=== TOWER OBJECTIVE PROGRESS UPDATE ===");
+                Debug.LogWarning($"Objective: {objective.objectiveTitle}");
+                Debug.LogWarning($"Old Progress: {currentProgress}");
+                Debug.LogWarning($"New Progress: {newProgress}");
+                Debug.LogWarning($"Target: {objective.targetValue}");
+                Debug.LogWarning($"Will complete: {newProgress >= objective.targetValue}");
+                Debug.LogWarning($"STACK TRACE:\n{System.Environment.StackTrace}");
+            }
+            
+            float oldProgress = currentProgress;
             currentProgress = newProgress;
             OnProgressChanged?.Invoke(this);
+            
+            Debug.Log($"[ObjectiveTracker] {objective?.objectiveTitle}: {oldProgress} -> {currentProgress}/{objective?.targetValue}");
             
             if (currentProgress >= objective.targetValue)
             {
@@ -39,9 +59,33 @@ namespace GameJam2026
         
         private void CompleteObjective()
         {
+            if (isCompleted)
+            {
+                Debug.LogWarning($"[ObjectiveTracker] CompleteObjective called twice for: {objective?.objectiveTitle}");
+                return;
+            }
+            
             isCompleted = true;
+            
+            // EXTRA LOGGING FOR TOWER OBJECTIVES
+            if (objective.objectiveType == ObjectiveType.ActivateObject || 
+                objective.objectiveType == ObjectiveType.RepairObject)
+            {
+                Debug.LogError($"=== TOWER OBJECTIVE COMPLETED ===");
+                Debug.LogError($"Objective: {objective.objectiveTitle}");
+                Debug.LogError($"Progress: {currentProgress}/{objective.targetValue}");
+                Debug.LogError($"COMPLETION STACK TRACE:\n{System.Environment.StackTrace}");
+            }
+            
             OnCompleted?.Invoke(this);
-            Debug.Log($"Objective Completed: {objective.objectiveTitle}");
+            Debug.Log($"✓ Objective Completed: {objective?.objectiveTitle}");
+        }
+        
+        public void ResetProgress()
+        {
+            currentProgress = 0f;
+            isCompleted = false;
+            Debug.Log($"[ObjectiveTracker] Reset: {objective?.objectiveTitle}");
         }
     }
 }

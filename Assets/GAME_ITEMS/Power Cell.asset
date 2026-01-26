@@ -14,12 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.CollectibleItem
   itemName: Power Cell
   description: A collectible item
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 7740285354695e04ca6c504c0edbddf7, type: 3}
+  worldModelPrefab: {fileID: 0}
   itemType: 0
-  rarity: 1
+  resourceType: 
   weight: 1
+  stackSize: 1
   powerValue: 15
+  heatReduction: 0
   materialValue: 1
   techValue: 0
   glowColor: {r: 0.8018868, g: 0.7441691, b: 0.049172327, a: 1}
-  worldModelPrefab: {fileID: 0}
+  collectSound: {fileID: 0}
