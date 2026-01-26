@@ -29,18 +29,45 @@ namespace GameJam2026
         private float bobTime;
         private bool isCollected = false;
 
+        /// <summary>
+        /// Public property to allow ItemSpawner to set item data
+        /// </summary>
+        public CollectibleItem ItemData
+        {
+            get { return itemData; }
+            set 
+            { 
+                itemData = value;
+                if (Application.isPlaying && itemData != null)
+                {
+                    SetupVisual();
+                }
+            }
+        }
+
         private void Start()
         {
             startPosition = transform.position;
             
             // Setup collider as trigger
             Collider col = GetComponent<Collider>();
-            col.isTrigger = true;
+            if (col != null)
+            {
+                col.isTrigger = true;
+            }
+            else
+            {
+                Debug.LogWarning($"CollectibleItemObject '{gameObject.name}' has no collider!");
+            }
             
             // Setup visual
             if (itemData != null)
             {
                 SetupVisual();
+            }
+            else
+            {
+                Debug.LogWarning($"CollectibleItemObject '{gameObject.name}' has no item data assigned!");
             }
         }
 
@@ -65,16 +92,19 @@ namespace GameJam2026
 
         private void SetupVisual()
         {
-            // Setup glow light
+            // Setup glow light color
             if (glowLight != null && itemData != null)
             {
                 glowLight.color = itemData.glowColor;
+                glowLight.intensity = 2f;
+                glowLight.range = 5f;
             }
             
-            // Instantiate model if specified
-            if (itemData.worldModelPrefab != null && visualModel == null)
+            // Instantiate model if specified and not already present
+            if (itemData != null && itemData.worldModelPrefab != null && visualModel == null)
             {
                 visualModel = Instantiate(itemData.worldModelPrefab, transform);
+                visualModel.transform.localPosition = Vector3.zero;
             }
         }
 
@@ -91,6 +121,12 @@ namespace GameJam2026
 
         private void TryCollect(GameObject collector)
         {
+            if (itemData == null)
+            {
+                Debug.LogError($"Cannot collect item - no item data on {gameObject.name}");
+                return;
+            }
+
             // Get the inventory from the collector
             InventoryManager inventory = collector.GetComponent<InventoryManager>();
             
@@ -100,16 +136,22 @@ namespace GameJam2026
                 if (inventory.CanAddItem(itemData))
                 {
                     // Add to inventory
-                    inventory.AddItem(itemData);
+                    bool added = inventory.AddItem(itemData);
                     
-                    // Mark as collected
-                    Collect();
+                    if (added)
+                    {
+                        // Mark as collected
+                        Collect();
+                    }
                 }
                 else
                 {
-                    Debug.Log("Cannot collect item - inventory full!");
-                    // TODO: Show UI message
+                    Debug.Log($"Cannot collect {itemData.itemName} - inventory full!");
                 }
+            }
+            else
+            {
+                Debug.LogWarning($"Collector {collector.name} has no InventoryManager!");
             }
         }
 
@@ -129,8 +171,10 @@ namespace GameJam2026
                 Instantiate(collectEffectPrefab, transform.position, Quaternion.identity);
             }
             
+            Debug.Log($"Collected: {itemData.itemName}");
+            
             // Destroy the object
-            Destroy(gameObject);
+            Destroy(gameObject, 0.1f);
         }
 
         private void OnDrawGizmosSelected()
