@@ -672,7 +672,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &5221506228318906662
 Transform:
   m_ObjectHideFlags: 0
@@ -681,13 +681,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5209482767824110935}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.13512552, y: 0.23449999, z: -4.859259}
+  m_LocalRotation: {x: 0.07776307, y: 0, z: 0, w: 0.9969719}
+  m_LocalPosition: {x: 0.13512552, y: 1.35, z: -3.13}
   m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7579162466666439366}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 8.92, y: 0, z: 0}
 --- !u!20 &7911169462005786662
 Camera:
   m_ObjectHideFlags: 0
@@ -835,6 +835,7 @@ GameObject:
   - component: {fileID: 7579162466666439366}
   - component: {fileID: 4392648090415491191}
   - component: {fileID: 2409638815363571974}
+  - component: {fileID: 5237974127356295479}
   m_Layer: 0
   m_Name: Rover 1
   m_TagString: Untagged
@@ -852,7 +853,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0.54, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 5, y: 5, z: 5}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5221506228318906662}
@@ -897,7 +898,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6693226827867917064}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c645b53e32125a64f9c8e59d82fa41e8, type: 3}
   m_Name: 
@@ -912,6 +913,33 @@ MonoBehaviour:
   frontRightCollider: {fileID: 2178833285087310648}
   rearLeftCollider: {fileID: 863865556676197804}
   rearRightCollider: {fileID: 19966519544592434}
+  frontLeftMesh: {fileID: 1122149563677549867}
+  frontRightMesh: {fileID: 6229320611789923090}
+  rearLeftMesh: {fileID: 2332918232839808312}
+  rearRightMesh: {fileID: 3667441310781864630}
+--- !u!114 &5237974127356295479
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6693226827867917064}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d575f543f853b3047b2fd5cc796afe86, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CarControllerV2
+  acceleration: 500
+  maxSpeed: 8
+  brakeForce: 1000
+  steerAngle: 25
+  downForce: 100
+  centerOfMass: {x: 0, y: -0.5, z: 0}
+  inputActions: {fileID: -944628639613478452, guid: 79ecea38a58c83348b1c13d76e73e90f, type: 3}
+  frontLeft: {fileID: 6877066472491036603}
+  frontRight: {fileID: 2178833285087310648}
+  rearLeft: {fileID: 863865556676197804}
+  rearRight: {fileID: 19966519544592434}
   frontLeftMesh: {fileID: 1122149563677549867}
   frontRightMesh: {fileID: 6229320611789923090}
   rearLeftMesh: {fileID: 2332918232839808312}
