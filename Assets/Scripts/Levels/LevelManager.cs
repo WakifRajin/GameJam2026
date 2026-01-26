@@ -358,15 +358,23 @@ namespace GameJam2026
         }
 
         private void UpdateRepairObjective(ObjectiveTracker tracker)
+    {
+        // Check if specific object is repaired
+        if (signalTower != null && tracker.objective.targetObject == signalTower.gameObject)
         {
-            if (signalTower != null && tracker.objective.targetObject == signalTower.gameObject)
+            // IMPORTANT: Check for FULLY ACTIVATED, not just repaired
+            // Only mark complete when tower is Active, not Repaired
+            if (signalTower.IsFullyActivated)
             {
-                if (signalTower.IsFullyActivated)
-                {
-                    tracker.UpdateProgress(tracker.objective.targetValue);
-                }
+                tracker.UpdateProgress(tracker.objective.targetValue);
+            }
+            else
+            {
+                // Tower exists but not activated - progress should be 0
+                tracker.UpdateProgress(0);
             }
         }
+    }
 
         #endregion
 

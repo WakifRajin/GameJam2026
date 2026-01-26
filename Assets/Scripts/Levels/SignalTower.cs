@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using UnityEngine.InputSystem; // Add this
+using UnityEngine.InputSystem;
 
 namespace GameJam2026
 {
@@ -16,7 +16,7 @@ namespace GameJam2026
         [SerializeField] private float powerRequired = 50f;
         
         [Header("References")]
-        [SerializeField] private InventoryManager playerInventory;
+        [SerializeField] private GridInventoryManager gridInventoryManager;
         [SerializeField] private RoverAttributeManager roverAttributes;
         [SerializeField] private Transform playerTransform;
         
@@ -33,7 +33,7 @@ namespace GameJam2026
         
         [Header("Interaction")]
         [SerializeField] private float interactionRange = 5f;
-        [SerializeField] private Key interactKey = Key.F; // Changed from KeyCode to Key
+        [SerializeField] private Key interactKey = Key.F;
         [SerializeField] private GameObject interactionPromptUI;
         [SerializeField] private TextMeshProUGUI promptText;
         
@@ -42,6 +42,9 @@ namespace GameJam2026
         [SerializeField] private AudioClip activationSound;
         [SerializeField] private AudioSource audioSource;
         
+        [Header("Debug")]
+        [SerializeField] private bool enableDebugLogs = true;
+        
         private TowerState currentState = TowerState.Broken;
         private int currentScrapMetal = 0;
         private float currentPower = 0f;
@@ -49,15 +52,22 @@ namespace GameJam2026
         private bool playerInRange = false;
         private float distanceToPlayer = 0f;
         
+        // Prevent accidental auto-activation
+        private bool manualActivationOnly = true;
+        
         public event System.Action OnTowerRepaired;
         public event System.Action OnTowerActivated;
         
         public TowerState CurrentState => currentState;
         public bool IsFullyActivated => currentState == TowerState.Active;
         public float DistanceToPlayer => distanceToPlayer;
+        public bool IsRepaired => currentState == TowerState.Repaired || currentState == TowerState.Active;
 
         private void Start()
         {
+            // IMPORTANT: Force state to Broken on start
+            currentState = TowerState.Broken;
+            
             // Find player
             player = GameObject.FindGameObjectWithTag("Player");
             if (player == null)
@@ -70,14 +80,26 @@ namespace GameJam2026
                 playerTransform = player.transform;
             }
             
-            if (playerInventory == null && player != null)
+            // Find GridInventoryManager
+            if (gridInventoryManager == null && player != null)
             {
-                playerInventory = player.GetComponent<InventoryManager>();
+                gridInventoryManager = player.GetComponent<GridInventoryManager>();
             }
             
             if (roverAttributes == null && player != null)
             {
                 roverAttributes = player.GetComponent<RoverAttributeManager>();
+            }
+            
+            // Validate references
+            if (gridInventoryManager == null)
+            {
+                Debug.LogError("SignalTower: GridInventoryManager not found on player!");
+            }
+            
+            if (roverAttributes == null)
+            {
+                Debug.LogError("SignalTower: RoverAttributeManager not found on player!");
             }
             
             // Always show the tower from the start
@@ -88,7 +110,11 @@ namespace GameJam2026
                 interactionPromptUI.SetActive(false);
             }
             
-            Debug.Log($"Signal Tower initialized at {transform.position}");
+            DebugLog($"SignalTower initialized at {transform.position}");
+            DebugLog($"- State: {currentState}");
+            DebugLog($"- Scrap Required: {scrapMetalRequired}");
+            DebugLog($"- Power Required: {powerRequired}");
+            DebugLog($"- Manual Activation Only: {manualActivationOnly}");
         }
 
         private void Update()
@@ -96,9 +122,10 @@ namespace GameJam2026
             UpdateDistanceToPlayer();
             CheckPlayerDistance();
             
-            // Changed to use Keyboard.current from new Input System
+            // Check for interaction input
             if (playerInRange && Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame)
             {
+                DebugLog($"Interact key pressed! Current state: {currentState}");
                 AttemptInteraction();
             }
             
@@ -120,9 +147,13 @@ namespace GameJam2026
             
             if (playerInRange != wasInRange)
             {
+                DebugLog($"Player in range changed: {playerInRange} (Distance: {distanceToPlayer:F2}m)");
+                
                 if (interactionPromptUI != null)
                 {
-                    interactionPromptUI.SetActive(playerInRange && currentState != TowerState.Active);
+                    bool shouldShow = playerInRange && currentState != TowerState.Active;
+                    interactionPromptUI.SetActive(shouldShow);
+                    DebugLog($"Prompt UI set to: {shouldShow}");
                 }
             }
         }
@@ -134,15 +165,17 @@ namespace GameJam2026
             switch (currentState)
             {
                 case TowerState.Broken:
+                    int haveScrap = GetPlayerScrapMetal();
                     promptText.text = $"[{interactKey}] Repair Tower\n" +
                                     $"Requires: {scrapMetalRequired} Scrap Metal\n" +
-                                    $"You have: {GetPlayerScrapMetal()}";
+                                    $"You have: {haveScrap}";
                     break;
                     
                 case TowerState.Repaired:
+                    float havePower = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
                     promptText.text = $"[{interactKey}] Power Tower\n" +
                                     $"Requires: {powerRequired} Power\n" +
-                                    $"You have: {roverAttributes?.CurrentPower:F0}";
+                                    $"You have: {havePower:F0}";
                     break;
                     
                 case TowerState.Active:
@@ -153,6 +186,9 @@ namespace GameJam2026
 
         private void AttemptInteraction()
         {
+            DebugLog($"=== AttemptInteraction called ===");
+            DebugLog($"Current State: {currentState}");
+            
             switch (currentState)
             {
                 case TowerState.Broken:
@@ -162,12 +198,19 @@ namespace GameJam2026
                 case TowerState.Repaired:
                     AttemptActivation();
                     break;
+                    
+                case TowerState.Active:
+                    DebugLog("Tower already active!");
+                    break;
             }
         }
 
         private void AttemptRepair()
         {
             int playerScrap = GetPlayerScrapMetal();
+            
+            DebugLog($"=== Attempting REPAIR ===");
+            DebugLog($"Need: {scrapMetalRequired}, Have: {playerScrap}");
             
             if (playerScrap >= scrapMetalRequired)
             {
@@ -179,13 +222,18 @@ namespace GameJam2026
             }
             else
             {
-                Debug.Log($"Not enough scrap metal! Need {scrapMetalRequired}, have {playerScrap}");
+                Debug.LogWarning($"❌ Not enough scrap metal! Need {scrapMetalRequired}, have {playerScrap}");
             }
         }
 
         private void AttemptActivation()
         {
-            if (roverAttributes != null && roverAttributes.CurrentPower >= powerRequired)
+            float havePower = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
+            
+            DebugLog($"=== Attempting ACTIVATION ===");
+            DebugLog($"Need: {powerRequired}, Have: {havePower:F0}");
+            
+            if (roverAttributes != null && havePower >= powerRequired)
             {
                 // Consume power
                 roverAttributes.ModifyPower(-powerRequired);
@@ -195,12 +243,20 @@ namespace GameJam2026
             }
             else
             {
-                Debug.Log($"Not enough power! Need {powerRequired}, have {roverAttributes?.CurrentPower:F0}");
+                Debug.LogWarning($"❌ Not enough power! Need {powerRequired}, have {havePower:F0}");
             }
         }
 
         private void RepairTower()
         {
+            if (currentState != TowerState.Broken)
+            {
+                Debug.LogWarning($"RepairTower called but tower is already {currentState}!");
+                return;
+            }
+            
+            DebugLog("=== REPAIRING TOWER ===");
+            
             currentState = TowerState.Repaired;
             currentScrapMetal = scrapMetalRequired;
             
@@ -217,11 +273,19 @@ namespace GameJam2026
             }
             
             OnTowerRepaired?.Invoke();
-            Debug.Log("Tower Repaired!");
+            Debug.Log("✓ Tower Repaired! Now needs power to activate.");
         }
 
         private void ActivateTower()
         {
+            if (currentState != TowerState.Repaired)
+            {
+                Debug.LogWarning($"ActivateTower called but tower state is {currentState}, not Repaired!");
+                return;
+            }
+            
+            DebugLog("=== ACTIVATING TOWER ===");
+            
             currentState = TowerState.Active;
             currentPower = powerRequired;
             
@@ -243,13 +307,12 @@ namespace GameJam2026
             }
             
             OnTowerActivated?.Invoke();
-            Debug.Log("Tower Activated! Distress signal sent!");
+            Debug.Log("✓✓✓ Tower Activated! Distress signal sent! ✓✓✓");
         }
 
         private void UpdateVisualState()
         {
             // Update models based on state
-            // If you only have one model, leave these references empty and just use the light
             if (brokenModel != null) 
                 brokenModel.SetActive(currentState == TowerState.Broken);
             if (repairedModel != null) 
@@ -279,39 +342,86 @@ namespace GameJam2026
                         break;
                 }
             }
+            
+            DebugLog($"Tower visual updated to: {currentState}");
         }
 
         private int GetPlayerScrapMetal()
         {
-            if (playerInventory == null) return 0;
+            if (gridInventoryManager == null) 
+            {
+                Debug.LogWarning("GridInventoryManager is null!");
+                return 0;
+            }
             
             int count = 0;
-            foreach (var item in playerInventory.Inventory)
+            var grid = gridInventoryManager.InventoryGrid;
+            
+            // Count items in grid that are Materials
+            for (int y = 0; y < gridInventoryManager.GridHeight; y++)
             {
-                if (item != null && item.itemType == ItemType.Material)
+                for (int x = 0; x < gridInventoryManager.GridWidth; x++)
                 {
-                    count++;
+                    var item = grid[x, y];
+                    if (item != null && item.itemType == ItemType.Material)
+                    {
+                        count++;
+                    }
                 }
             }
+            
             return count;
         }
 
         private void ConsumeScrapMetal(int amount)
         {
-            if (playerInventory == null) return;
+            if (gridInventoryManager == null) return;
             
             int consumed = 0;
-            var inventory = new System.Collections.Generic.List<CollectibleItem>(playerInventory.Inventory);
+            var grid = gridInventoryManager.InventoryGrid;
             
-            foreach (var item in inventory)
+            // Find and remove scrap metal items
+            for (int y = 0; y < gridInventoryManager.GridHeight && consumed < amount; y++)
             {
-                if (consumed >= amount) break;
-                
-                if (item != null && item.itemType == ItemType.Material)
+                for (int x = 0; x < gridInventoryManager.GridWidth && consumed < amount; x++)
                 {
-                    playerInventory.RemoveItem(item);
-                    consumed++;
+                    var item = grid[x, y];
+                    if (item != null && item.itemType == ItemType.Material)
+                    {
+                        gridInventoryManager.RemoveItemAt(x, y);
+                        consumed++;
+                        DebugLog($"Consumed scrap metal {consumed}/{amount}");
+                    }
                 }
+            }
+            
+            DebugLog($"✓ Consumed {consumed} scrap metal");
+        }
+
+        // PUBLIC METHOD - Only for manual/scripted activation
+        public void ForceRepair()
+        {
+            if (currentState == TowerState.Broken)
+            {
+                Debug.Log("ForceRepair called - skipping requirements");
+                RepairTower();
+            }
+        }
+
+        public void ForceActivate()
+        {
+            if (currentState == TowerState.Repaired)
+            {
+                Debug.Log("ForceActivate called - skipping requirements");
+                ActivateTower();
+            }
+        }
+
+        private void DebugLog(string message)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"[SignalTower] {message}");
             }
         }
 
@@ -320,6 +430,11 @@ namespace GameJam2026
             // Draw interaction range
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(transform.position, interactionRange);
+            
+            // Draw label
+            #if UNITY_EDITOR
+            UnityEditor.Handles.Label(transform.position + Vector3.up * 3f, $"Signal Tower\nState: {currentState}");
+            #endif
         }
 
         public enum TowerState
@@ -334,7 +449,7 @@ namespace GameJam2026
         [ContextMenu("Force Repair Tower")]
         private void DebugRepairTower()
         {
-            RepairTower();
+            ForceRepair();
         }
         
         [ContextMenu("Force Activate Tower")]
@@ -342,17 +457,35 @@ namespace GameJam2026
         {
             if (currentState == TowerState.Broken)
             {
-                RepairTower();
+                ForceRepair();
             }
-            ActivateTower();
+            if (currentState == TowerState.Repaired)
+            {
+                ForceActivate();
+            }
         }
         
         [ContextMenu("Reset Tower")]
         private void DebugResetTower()
         {
             currentState = TowerState.Broken;
+            currentScrapMetal = 0;
+            currentPower = 0;
             UpdateVisualState();
             Debug.Log("Tower reset to broken state");
+        }
+        
+        [ContextMenu("Print Tower Status")]
+        private void DebugPrintStatus()
+        {
+            Debug.Log("=== SIGNAL TOWER STATUS ===");
+            Debug.Log($"State: {currentState}");
+            Debug.Log($"Player in range: {playerInRange} (Distance: {distanceToPlayer:F2}m)");
+            Debug.Log($"GridInventoryManager: {(gridInventoryManager != null ? "Found" : "NULL")}");
+            Debug.Log($"RoverAttributes: {(roverAttributes != null ? "Found" : "NULL")}");
+            Debug.Log($"Scrap metal in inventory: {GetPlayerScrapMetal()}");
+            Debug.Log($"Rover power: {(roverAttributes != null ? roverAttributes.CurrentPower.ToString("F0") : "N/A")}");
+            Debug.Log($"Interaction prompt active: {(interactionPromptUI != null ? interactionPromptUI.activeSelf.ToString() : "NULL")}");
         }
         
         #endregion
