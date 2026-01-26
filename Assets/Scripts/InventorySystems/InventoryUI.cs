@@ -16,9 +16,12 @@ namespace GameJam2026
         [SerializeField] private GridInventoryManager inventoryManager;
         [SerializeField] private UpgradeManager upgradeManager;
         
-        [Header("UI Panels")]
-        [SerializeField] private GameObject inventoryPanel;
-        [SerializeField] private GameObject upgradePanel;
+        [Header("Main Panel (Contains everything)")]
+        [SerializeField] private GameObject inventoryPanel; // The whole UI panel
+        
+        [Header("Sub-Containers (Inside main panel)")]
+        [SerializeField] private GameObject inventoryContainer; // The inventory tab content
+        [SerializeField] private GameObject upgradeContainer; // The upgrade tab content
         [SerializeField] private Transform gridContainer;
         [SerializeField] private GameObject inventorySlotPrefab;
         
@@ -42,6 +45,10 @@ namespace GameJam2026
         [SerializeField] private Button inventoryTabButton;
         [SerializeField] private Button upgradeTabButton;
         
+        [Header("Pause Settings")]
+        [SerializeField] private bool pauseGameWhenOpen = true;
+        [SerializeField] private CanvasGroup gameplayUIGroup;
+        
         private InventorySlot[,] inventorySlots;
         private InventorySlot selectedSlot;
         private bool isOpen = false;
@@ -63,6 +70,7 @@ namespace GameJam2026
 
         private void Start()
         {
+            // Find managers
             if (inventoryManager == null)
             {
                 inventoryManager = FindObjectOfType<GridInventoryManager>();
@@ -71,6 +79,12 @@ namespace GameJam2026
             if (upgradeManager == null)
             {
                 upgradeManager = FindObjectOfType<UpgradeManager>();
+            }
+            
+            // Verify EventSystem exists
+            if (UnityEngine.EventSystems.EventSystem.current == null)
+            {
+                Debug.LogError("InventoryUI: No EventSystem found in scene! UI buttons won't work. Add one via: GameObject → UI → Event System");
             }
             
             // Subscribe to events
@@ -82,13 +96,31 @@ namespace GameJam2026
                 inventoryManager.OnInventoryOpened += OpenInventory;
                 inventoryManager.OnInventoryClosed += CloseInventory;
             }
+            else
+            {
+                Debug.LogError("InventoryUI: GridInventoryManager not found!");
+            }
             
             // Setup buttons
             if (consumeButton != null)
+            {
                 consumeButton.onClick.AddListener(OnConsumeButtonClicked);
+                Debug.Log("Consume button listener added");
+            }
+            else
+            {
+                Debug.LogWarning("InventoryUI: Consume button not assigned!");
+            }
             
             if (discardButton != null)
+            {
                 discardButton.onClick.AddListener(OnDiscardButtonClicked);
+                Debug.Log("Discard button listener added");
+            }
+            else
+            {
+                Debug.LogWarning("InventoryUI: Discard button not assigned!");
+            }
             
             if (inventoryTabButton != null)
                 inventoryTabButton.onClick.AddListener(() => ShowTab(true));
@@ -99,21 +131,43 @@ namespace GameJam2026
             // Initialize
             CreateInventoryGrid();
             
+            // Close inventory at start
             if (inventoryPanel != null)
                 inventoryPanel.SetActive(false);
+            
+            // Show inventory tab by default when opened
+            ShowTab(true);
             
             if (actionButtonsPanel != null)
                 actionButtonsPanel.SetActive(false);
             
             if (itemInfoPanel != null)
                 itemInfoPanel.SetActive(false);
+            
+            // Make sure cursor is available for editor testing
+            #if UNITY_EDITOR
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+            #endif
         }
 
         private void CreateInventoryGrid()
         {
-            if (gridContainer == null || inventorySlotPrefab == null || inventoryManager == null)
+            if (gridContainer == null)
             {
-                Debug.LogError("InventoryUI: Missing references for grid creation!");
+                Debug.LogError("InventoryUI: Grid Container not assigned!");
+                return;
+            }
+            
+            if (inventorySlotPrefab == null)
+            {
+                Debug.LogError("InventoryUI: Inventory Slot Prefab not assigned!");
+                return;
+            }
+            
+            if (inventoryManager == null)
+            {
+                Debug.LogError("InventoryUI: Inventory Manager not found!");
                 return;
             }
             
@@ -133,6 +187,7 @@ namespace GameJam2026
             gridLayout.constraintCount = width;
             gridLayout.cellSize = new Vector2(80, 80);
             gridLayout.spacing = new Vector2(5, 5);
+            gridLayout.childAlignment = TextAnchor.UpperLeft;
             
             // Create slots
             for (int y = 0; y < height; y++)
@@ -148,10 +203,14 @@ namespace GameJam2026
                         slot.Initialize(x, y, this);
                         inventorySlots[x, y] = slot;
                     }
+                    else
+                    {
+                        Debug.LogError($"InventorySlot component not found on prefab at ({x}, {y})");
+                    }
                 }
             }
             
-            Debug.Log($"Created {width}x{height} inventory grid");
+            Debug.Log($"Created {width}x{height} inventory grid ({width * height} slots)");
         }
 
         private void OnItemAddedToGrid(CollectibleItem item, int x, int y)
@@ -249,6 +308,8 @@ namespace GameJam2026
 
         private void OnConsumeButtonClicked()
         {
+            Debug.Log("Consume button clicked!");
+            
             if (selectedSlot != null && selectedSlot.HasItem)
             {
                 inventoryManager.ConsumeItem(selectedSlot.GridX, selectedSlot.GridY);
@@ -258,10 +319,16 @@ namespace GameJam2026
                 if (actionButtonsPanel != null)
                     actionButtonsPanel.SetActive(false);
             }
+            else
+            {
+                Debug.Log("No item selected to consume");
+            }
         }
 
         private void OnDiscardButtonClicked()
         {
+            Debug.Log("Discard button clicked!");
+            
             if (selectedSlot != null && selectedSlot.HasItem)
             {
                 inventoryManager.DiscardItem(selectedSlot.GridX, selectedSlot.GridY);
@@ -271,39 +338,95 @@ namespace GameJam2026
                 if (actionButtonsPanel != null)
                     actionButtonsPanel.SetActive(false);
             }
+            else
+            {
+                Debug.Log("No item selected to discard");
+            }
         }
 
         private void ShowTab(bool showInventory)
         {
-            if (inventoryPanel != null)
-                inventoryPanel.SetActive(showInventory);
+            // Toggle between inventory and upgrade containers
+            if (inventoryContainer != null)
+                inventoryContainer.SetActive(showInventory);
             
-            if (upgradePanel != null)
-                upgradePanel.SetActive(!showInventory);
+            if (upgradeContainer != null)
+                upgradeContainer.SetActive(!showInventory);
+            
+            Debug.Log($"Showing tab: {(showInventory ? "Inventory" : "Upgrades")}");
         }
 
         public void OpenInventory()
         {
+            Debug.Log("Opening inventory...");
+            
             if (inventoryPanel != null)
             {
+                // Show the whole panel
                 inventoryPanel.SetActive(true);
+                
+                // Make sure we're on inventory tab by default
+                ShowTab(true);
+                
                 isOpen = true;
-                Time.timeScale = 0f; // Pause game
+                
+                if (pauseGameWhenOpen)
+                {
+                    Time.timeScale = 0f;
+                }
+                
+                // Disable gameplay UI
+                if (gameplayUIGroup != null)
+                {
+                    gameplayUIGroup.alpha = 0.3f;
+                    gameplayUIGroup.interactable = false;
+                }
+                
+                // IMPORTANT: Make cursor visible and unlocked
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+                
                 UpdateResourceDisplay();
+                
+                Debug.Log("Inventory opened. Cursor visible: " + Cursor.visible);
             }
         }
 
         public void CloseInventory()
         {
+            Debug.Log("Closing inventory...");
+            
             if (inventoryPanel != null)
             {
+                // Hide the whole panel (including both containers and tabs)
                 inventoryPanel.SetActive(false);
+                
                 isOpen = false;
-                Time.timeScale = 1f; // Unpause game
+                
+                if (pauseGameWhenOpen)
+                {
+                    Time.timeScale = 1f;
+                }
+                
+                // Re-enable gameplay UI
+                if (gameplayUIGroup != null)
+                {
+                    gameplayUIGroup.alpha = 1f;
+                    gameplayUIGroup.interactable = true;
+                }
+                
+                // Lock cursor back for gameplay
+                #if !UNITY_EDITOR
+                Cursor.visible = false;
+                Cursor.lockState = CursorLockMode.Locked;
+                #endif
+                
                 HideItemInfo();
                 
                 if (actionButtonsPanel != null)
                     actionButtonsPanel.SetActive(false);
+                
+                Debug.Log("Inventory closed");
             }
         }
 
@@ -318,5 +441,101 @@ namespace GameJam2026
                 inventoryManager.OnInventoryClosed -= CloseInventory;
             }
         }
+
+        #region Debug Methods
+
+        [ContextMenu("Test Button Click")]
+        private void DebugTestButton()
+        {
+            Debug.Log("=== BUTTON TEST ===");
+            
+            if (consumeButton != null)
+            {
+                Debug.Log($"Consume Button: {consumeButton.name}");
+                Debug.Log($"- Interactable: {consumeButton.interactable}");
+                Debug.Log($"- GameObject Active: {consumeButton.gameObject.activeInHierarchy}");
+                Debug.Log($"- Parent Active: {consumeButton.transform.parent.gameObject.activeInHierarchy}");
+                
+                Image img = consumeButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    Debug.Log($"- Image Raycast Target: {img.raycastTarget}");
+                }
+                else
+                {
+                    Debug.LogWarning("- No Image component found!");
+                }
+                
+                // Check listeners
+                var listenerCount = consumeButton.onClick.GetPersistentEventCount();
+                Debug.Log($"- Persistent Listeners: {listenerCount}");
+                
+                // Simulate click
+                Debug.Log("Attempting to invoke button click...");
+                consumeButton.onClick.Invoke();
+            }
+            else
+            {
+                Debug.LogError("Consume button is NULL!");
+            }
+            
+            // Check EventSystem
+            UnityEngine.EventSystems.EventSystem es = UnityEngine.EventSystems.EventSystem.current;
+            if (es == null)
+            {
+                Debug.LogError("NO EVENT SYSTEM FOUND IN SCENE!");
+            }
+            else
+            {
+                Debug.Log($"✓ EventSystem found: {es.name}");
+                Debug.Log($"- Current Selected GameObject: {(es.currentSelectedGameObject != null ? es.currentSelectedGameObject.name : "None")}");
+                Debug.Log($"- EventSystem Enabled: {es.enabled}");
+            }
+            
+            // Check cursor
+            Debug.Log($"Cursor visible: {Cursor.visible}");
+            Debug.Log($"Cursor lock state: {Cursor.lockState}");
+        }
+
+        [ContextMenu("Force Open Inventory")]
+        private void DebugForceOpen()
+        {
+            OpenInventory();
+        }
+
+        [ContextMenu("Force Close Inventory")]
+        private void DebugForceClose()
+        {
+            CloseInventory();
+        }
+
+        [ContextMenu("Toggle Tab")]
+        private void DebugToggleTab()
+        {
+            bool showInventory = inventoryContainer != null && !inventoryContainer.activeSelf;
+            ShowTab(showInventory);
+        }
+
+        [ContextMenu("Print UI Status")]
+        private void DebugPrintStatus()
+        {
+            Debug.Log("=== INVENTORY UI STATUS ===");
+            Debug.Log($"Is Open: {isOpen}");
+            Debug.Log($"Inventory Panel (Main): {(inventoryPanel != null ? inventoryPanel.name : "NULL")}");
+            Debug.Log($"- Active: {(inventoryPanel != null ? inventoryPanel.activeSelf : false)}");
+            Debug.Log($"Inventory Container: {(inventoryContainer != null ? inventoryContainer.name : "NULL")}");
+            Debug.Log($"- Active: {(inventoryContainer != null ? inventoryContainer.activeSelf : false)}");
+            Debug.Log($"Upgrade Container: {(upgradeContainer != null ? upgradeContainer.name : "NULL")}");
+            Debug.Log($"- Active: {(upgradeContainer != null ? upgradeContainer.activeSelf : false)}");
+            Debug.Log($"Grid Container: {(gridContainer != null ? gridContainer.name : "NULL")}");
+            Debug.Log($"Slot Prefab: {(inventorySlotPrefab != null ? inventorySlotPrefab.name : "NULL")}");
+            Debug.Log($"Inventory Manager: {(inventoryManager != null ? "Found" : "NULL")}");
+            Debug.Log($"Slots Created: {(inventorySlots != null ? $"{inventorySlots.GetLength(0)}x{inventorySlots.GetLength(1)}" : "Not created")}");
+            Debug.Log($"Consume Button: {(consumeButton != null ? consumeButton.name : "NULL")}");
+            Debug.Log($"Discard Button: {(discardButton != null ? discardButton.name : "NULL")}");
+            Debug.Log($"Time Scale: {Time.timeScale}");
+        }
+
+        #endregion
     }
 }

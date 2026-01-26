@@ -7,7 +7,7 @@
             "id": "deef13cb-31af-4d1b-8009-6e4f55213531",
             "actions": [
                 {
-                    "name": "New action",
+                    "name": "Inventory",
                     "type": "Button",
                     "id": "e3b51bb5-efa6-40c6-a357-39ab4f9da3f9",
                     "expectedControlType": "",
@@ -19,12 +19,12 @@
             "bindings": [
                 {
                     "name": "",
-                    "id": "39f936a5-2f6b-44ed-816a-fc234237ba58",
-                    "path": "<Keyboard>/tab",
+                    "id": "c6edf3dd-a09e-4501-bf12-2277bc044583",
+                    "path": "<Keyboard>/e",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "New action",
+                    "action": "Inventory",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }
