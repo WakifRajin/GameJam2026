@@ -35,19 +35,24 @@ namespace GameJam2026
         [SerializeField] private Button nextLevelButton;
         
         private Dictionary<ObjectiveTracker, GameObject> objectiveUIElements = new Dictionary<ObjectiveTracker, GameObject>();
+        private float totalTime = 300f;
 
         private void Start()
         {
             if (levelManager == null)
             {
                 levelManager = FindObjectOfType<LevelManager>();
+                if (levelManager == null)
+                {
+                    Debug.LogError("LevelUIManager: Could not find LevelManager!");
+                    return;
+                }
             }
             
-            if (levelManager != null)
-            {
-                SubscribeToEvents();
-                InitializeUI();
-            }
+            SubscribeToEvents();
+            
+            // Wait a frame for LevelManager to initialize, then setup UI
+            Invoke(nameof(InitializeUI), 0.1f);
             
             if (victoryPanel != null) victoryPanel.SetActive(false);
             if (defeatPanel != null) defeatPanel.SetActive(false);
@@ -70,56 +75,126 @@ namespace GameJam2026
 
         private void InitializeUI()
         {
+            DisplayLevelInfo();
             CreateObjectiveList();
+            Debug.Log("LevelUIManager initialized");
+        }
+
+        private void DisplayLevelInfo()
+        {
+            // This would need to be added to LevelManager to expose these values
+            if (levelTitleText != null)
+            {
+                levelTitleText.text = "Level 1: Distress Signal"; // You can get this from LevelManager
+            }
+            
+            if (levelDescriptionText != null)
+            {
+                levelDescriptionText.text = "Restore power and send a signal before nightfall";
+            }
         }
 
         private void CreateObjectiveList()
         {
-            if (objectiveListContainer == null || objectivePrefab == null) return;
-            
-            foreach (var tracker in levelManager.Objectives)
+            if (objectiveListContainer == null)
             {
-                GameObject objUI = Instantiate(objectivePrefab, objectiveListContainer);
-                
-                // Setup UI elements
-                TextMeshProUGUI titleText = objUI.transform.Find("Title")?.GetComponent<TextMeshProUGUI>();
-                TextMeshProUGUI progressText = objUI.transform.Find("Progress")?.GetComponent<TextMeshProUGUI>();
-                Image checkmark = objUI.transform.Find("Checkmark")?.GetComponent<Image>();
-                
-                if (titleText != null)
-                {
-                    titleText.text = tracker.objective.objectiveTitle;
-                }
-                
-                if (checkmark != null)
-                {
-                    checkmark.enabled = false;
-                }
-                
-                objectiveUIElements[tracker] = objUI;
-                
-                // Subscribe to progress changes
-                tracker.OnProgressChanged += (t) => UpdateObjectiveUI(t);
+                Debug.LogError("LevelUIManager: Objective List Container is not assigned!");
+                return;
             }
+            
+            if (objectivePrefab == null)
+            {
+                Debug.LogError("LevelUIManager: Objective Prefab is not assigned!");
+                return;
+            }
+
+            // Clear existing objectives
+            foreach (Transform child in objectiveListContainer)
+            {
+                Destroy(child.gameObject);
+            }
+            objectiveUIElements.Clear();
+
+            var objectives = levelManager.Objectives;
+            Debug.Log($"Creating UI for {objectives.Count} objectives");
+
+            foreach (var tracker in objectives)
+            {
+                CreateObjectiveUI(tracker);
+            }
+        }
+
+        private void CreateObjectiveUI(ObjectiveTracker tracker)
+        {
+            GameObject objUI = Instantiate(objectivePrefab, objectiveListContainer);
+            objUI.name = $"Objective_{tracker.objective.objectiveTitle}";
+            
+            // Find child elements by name
+            Transform titleTransform = objUI.transform.Find("Title");
+            Transform progressTransform = objUI.transform.Find("Progress");
+            Transform checkmarkTransform = objUI.transform.Find("Checkmark");
+            
+            if (titleTransform == null)
+            {
+                Debug.LogError($"Could not find 'Title' child in ObjectiveItem prefab!");
+                return;
+            }
+            
+            TextMeshProUGUI titleText = titleTransform.GetComponent<TextMeshProUGUI>();
+            TextMeshProUGUI progressText = progressTransform?.GetComponent<TextMeshProUGUI>();
+            GameObject checkmark = checkmarkTransform?.gameObject;
+            
+            if (titleText != null)
+            {
+                titleText.text = tracker.objective.objectiveTitle;
+                Debug.Log($"Set objective title: {tracker.objective.objectiveTitle}");
+            }
+            
+            if (progressText != null)
+            {
+                progressText.text = $"0/{tracker.objective.targetValue:F0}";
+            }
+            
+            if (checkmark != null)
+            {
+                checkmark.SetActive(false);
+            }
+            
+            objectiveUIElements[tracker] = objUI;
+            
+            // Subscribe to progress changes
+            tracker.OnProgressChanged += (t) => UpdateObjectiveUI(t);
         }
 
         private void UpdateObjectiveUI(ObjectiveTracker tracker)
         {
-            if (!objectiveUIElements.ContainsKey(tracker)) return;
+            if (!objectiveUIElements.ContainsKey(tracker))
+            {
+                Debug.LogWarning($"Objective UI not found for: {tracker.objective.objectiveTitle}");
+                return;
+            }
             
             GameObject objUI = objectiveUIElements[tracker];
-            TextMeshProUGUI progressText = objUI.transform.Find("Progress")?.GetComponent<TextMeshProUGUI>();
-            Image checkmark = objUI.transform.Find("Checkmark")?.GetComponent<Image>();
+            
+            Transform progressTransform = objUI.transform.Find("Progress");
+            Transform checkmarkTransform = objUI.transform.Find("Checkmark");
+            
+            TextMeshProUGUI progressText = progressTransform?.GetComponent<TextMeshProUGUI>();
+            GameObject checkmark = checkmarkTransform?.gameObject;
             
             if (progressText != null)
             {
-                progressText.text = $"{tracker.currentProgress:F0} / {tracker.objective.targetValue:F0}";
+                progressText.text = $"{tracker.currentProgress:F0}/{tracker.objective.targetValue:F0}";
+                Debug.Log($"Updated progress: {tracker.currentProgress:F0}/{tracker.objective.targetValue:F0}");
             }
             
             if (checkmark != null && tracker.isCompleted)
             {
-                checkmark.enabled = true;
-                checkmark.color = Color.green;
+                checkmark.SetActive(true);
+                if (progressText != null)
+                {
+                    progressText.color = Color.green;
+                }
             }
         }
 
@@ -142,18 +217,20 @@ namespace GameJam2026
             
             if (timerFillBar != null)
             {
-                timerFillBar.fillAmount = timeRemaining / 300f; // Assuming 5 min default
+                timerFillBar.fillAmount = timeRemaining / totalTime;
                 timerFillBar.color = timerText != null ? timerText.color : normalTimeColor;
             }
         }
 
         private void OnLevelStarted()
         {
-            Debug.Log("Level UI: Level Started");
+            Debug.Log("LevelUIManager: Level Started");
+            totalTime = levelManager.TimeRemaining;
         }
 
         private void OnLevelCompleted()
         {
+            Debug.Log("LevelUIManager: Level Completed");
             if (victoryPanel != null)
             {
                 victoryPanel.SetActive(true);
@@ -162,6 +239,7 @@ namespace GameJam2026
 
         private void OnLevelFailed()
         {
+            Debug.Log("LevelUIManager: Level Failed");
             if (defeatPanel != null)
             {
                 defeatPanel.SetActive(true);
@@ -170,6 +248,7 @@ namespace GameJam2026
 
         private void OnObjectiveCompleted(ObjectiveTracker tracker)
         {
+            Debug.Log($"LevelUIManager: Objective Completed - {tracker.objective.objectiveTitle}");
             UpdateObjectiveUI(tracker);
         }
 
@@ -184,5 +263,28 @@ namespace GameJam2026
                 levelManager.OnTimeUpdated -= UpdateTimer;
             }
         }
+
+        #region Debug
+        
+        [ContextMenu("Refresh Objectives UI")]
+        private void DebugRefreshUI()
+        {
+            CreateObjectiveList();
+        }
+
+        [ContextMenu("Print Objective Count")]
+        private void DebugPrintObjectives()
+        {
+            if (levelManager != null)
+            {
+                Debug.Log($"LevelManager has {levelManager.Objectives.Count} objectives");
+                foreach (var obj in levelManager.Objectives)
+                {
+                    Debug.Log($"- {obj.objective.objectiveTitle}");
+                }
+            }
+        }
+        
+        #endregion
     }
 }

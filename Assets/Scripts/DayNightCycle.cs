@@ -32,16 +32,20 @@ namespace GameJam2026
         [SerializeField] private bool updateAmbientLight = true;
 
         [Header("Fog Settings")]
-        [SerializeField] private bool updateFog = true;
+        [SerializeField] private bool controlFog = true;
+        [SerializeField] private bool enableFogAutomatically = true;
         [SerializeField] private Gradient fogColorGradient;
+        [SerializeField] private float fogDensity = 0.01f;
+        [SerializeField] private float fogStartDistance = 10f;
+        [SerializeField] private float fogEndDistance = 100f;
 
         [Header("Visual Rotation")]
         [SerializeField] private bool rotateSun = true;
-        [SerializeField] private float sunRotationSpeed = 15f; // Degrees per game hour
 
         // Current time (0 to 1, where 0.5 is noon)
         private float currentTime;
         private bool wasDay = true;
+        private bool fogWasEnabled = false;
 
         private void Start()
         {
@@ -66,8 +70,13 @@ namespace GameJam2026
             // Create default gradients if not set
             InitializeDefaultGradients();
 
+            // Setup fog
+            SetupFog();
+
             // Initial update
             UpdateCycle();
+            
+            Debug.Log($"Day/Night Cycle initialized. Fog enabled: {RenderSettings.fog}");
         }
 
         private void Update()
@@ -94,6 +103,7 @@ namespace GameJam2026
             {
                 roverAttributes.SetDaytime(isDay);
                 wasDay = isDay;
+                Debug.Log($"Time changed to: {(isDay ? "DAY" : "NIGHT")}");
             }
 
             // Update lighting
@@ -109,7 +119,7 @@ namespace GameJam2026
             }
 
             // Update fog
-            if (updateFog && RenderSettings.fog)
+            if (controlFog)
             {
                 UpdateFog();
             }
@@ -145,9 +155,43 @@ namespace GameJam2026
 
         private void UpdateFog()
         {
-            if (fogColorGradient != null && fogColorGradient.colorKeys.Length > 0)
+            // Make sure fog is enabled
+            if (!RenderSettings.fog && enableFogAutomatically)
             {
-                RenderSettings.fogColor = fogColorGradient.Evaluate(currentTime);
+                RenderSettings.fog = true;
+                Debug.Log("Fog was disabled - automatically enabled it");
+            }
+
+            if (RenderSettings.fog)
+            {
+                if (fogColorGradient != null && fogColorGradient.colorKeys.Length > 0)
+                {
+                    Color newFogColor = fogColorGradient.Evaluate(currentTime);
+                    RenderSettings.fogColor = newFogColor;
+                }
+            }
+        }
+
+        private void SetupFog()
+        {
+            if (!controlFog) return;
+
+            // Store original fog state
+            fogWasEnabled = RenderSettings.fog;
+
+            // Enable fog if requested
+            if (enableFogAutomatically)
+            {
+                RenderSettings.fog = true;
+                RenderSettings.fogMode = FogMode.ExponentialSquared;
+                RenderSettings.fogDensity = fogDensity;
+                
+                // Alternative: Use Linear fog
+                // RenderSettings.fogMode = FogMode.Linear;
+                // RenderSettings.fogStartDistance = fogStartDistance;
+                // RenderSettings.fogEndDistance = fogEndDistance;
+                
+                Debug.Log("Fog enabled and configured");
             }
         }
 
@@ -200,14 +244,16 @@ namespace GameJam2026
                 ambientColorGradient.SetKeys(colorKeys, alphaKeys);
             }
 
-            // Create default fog gradient if empty
+            // Create default fog gradient if empty - MARS ATMOSPHERE COLORS
             if (fogColorGradient == null || fogColorGradient.colorKeys.Length == 0)
             {
                 fogColorGradient = new Gradient();
-                GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(new Color(0.3f, 0.2f, 0.2f), 0f);    // Night - dark reddish (Mars atmosphere)
-                colorKeys[1] = new GradientColorKey(new Color(0.8f, 0.5f, 0.4f), 0.5f);  // Day - Mars atmosphere color
-                colorKeys[2] = new GradientColorKey(new Color(0.3f, 0.2f, 0.2f), 1f);    // Night
+                GradientColorKey[] colorKeys = new GradientColorKey[5];
+                colorKeys[0] = new GradientColorKey(new Color(0.25f, 0.15f, 0.15f), 0f);    // Night - dark reddish
+                colorKeys[1] = new GradientColorKey(new Color(0.9f, 0.6f, 0.4f), 0.25f);    // Sunrise - orange/red
+                colorKeys[2] = new GradientColorKey(new Color(0.95f, 0.7f, 0.5f), 0.5f);    // Day - butterscotch
+                colorKeys[3] = new GradientColorKey(new Color(0.85f, 0.5f, 0.35f), 0.75f);  // Sunset - red/orange
+                colorKeys[4] = new GradientColorKey(new Color(0.25f, 0.15f, 0.15f), 1f);    // Night - dark reddish
 
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
@@ -268,6 +314,19 @@ namespace GameJam2026
             dayDurationInSeconds = Mathf.Max(1f, seconds);
         }
 
+        /// <summary>
+        /// Force fog to be enabled
+        /// </summary>
+        public void EnableFog(bool enable)
+        {
+            RenderSettings.fog = enable;
+            if (enable)
+            {
+                UpdateFog();
+                Debug.Log("Fog manually enabled");
+            }
+        }
+
         #endregion
 
         #region Debug Methods
@@ -302,6 +361,33 @@ namespace GameJam2026
             pauseTime = !pauseTime;
         }
 
+        [ContextMenu("Enable Fog")]
+        private void DebugEnableFog()
+        {
+            EnableFog(true);
+        }
+
+        [ContextMenu("Print Fog Status")]
+        private void DebugPrintFogStatus()
+        {
+            Debug.Log($"=== FOG STATUS ===");
+            Debug.Log($"Fog Enabled: {RenderSettings.fog}");
+            Debug.Log($"Fog Mode: {RenderSettings.fogMode}");
+            Debug.Log($"Fog Color: {RenderSettings.fogColor}");
+            Debug.Log($"Fog Density: {RenderSettings.fogDensity}");
+            Debug.Log($"Control Fog: {controlFog}");
+            Debug.Log($"Enable Fog Automatically: {enableFogAutomatically}");
+        }
+
         #endregion
+
+        private void OnDestroy()
+        {
+            // Restore original fog state
+            if (controlFog && !enableFogAutomatically)
+            {
+                RenderSettings.fog = fogWasEnabled;
+            }
+        }
     }
 }
