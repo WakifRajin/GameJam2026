@@ -5,7 +5,8 @@ using TMPro;
 namespace GameJam2026
 {
     /// <summary>
-    /// The broken signal tower that needs to be repaired
+    /// The signal tower that needs to be repaired and powered
+    /// Always visible, distance tracked for navigation via RoverUIManager
     /// </summary>
     public class SignalTower : MonoBehaviour
     {
@@ -16,8 +17,9 @@ namespace GameJam2026
         [Header("References")]
         [SerializeField] private InventoryManager playerInventory;
         [SerializeField] private RoverAttributeManager roverAttributes;
+        [SerializeField] private Transform playerTransform;
         
-        [Header("Visual")]
+        [Header("Visual - Tower States")]
         [SerializeField] private Light towerLight;
         [SerializeField] private Color brokenColor = Color.red;
         [SerializeField] private Color repairedColor = Color.yellow;
@@ -44,19 +46,27 @@ namespace GameJam2026
         private float currentPower = 0f;
         private GameObject player;
         private bool playerInRange = false;
+        private float distanceToPlayer = 0f;
         
         public event System.Action OnTowerRepaired;
         public event System.Action OnTowerActivated;
         
         public TowerState CurrentState => currentState;
         public bool IsFullyActivated => currentState == TowerState.Active;
+        public float DistanceToPlayer => distanceToPlayer;
 
         private void Start()
         {
+            // Find player
             player = GameObject.FindGameObjectWithTag("Player");
             if (player == null)
             {
                 player = FindObjectOfType<RoverAttributeManager>()?.gameObject;
+            }
+            
+            if (player != null)
+            {
+                playerTransform = player.transform;
             }
             
             if (playerInventory == null && player != null)
@@ -69,16 +79,20 @@ namespace GameJam2026
                 roverAttributes = player.GetComponent<RoverAttributeManager>();
             }
             
+            // Always show the tower from the start
             UpdateVisualState();
             
             if (interactionPromptUI != null)
             {
                 interactionPromptUI.SetActive(false);
             }
+            
+            Debug.Log($"Signal Tower initialized at {transform.position}");
         }
 
         private void Update()
         {
+            UpdateDistanceToPlayer();
             CheckPlayerDistance();
             
             if (playerInRange && Input.GetKeyDown(interactKey))
@@ -89,13 +103,18 @@ namespace GameJam2026
             UpdatePrompt();
         }
 
+        private void UpdateDistanceToPlayer()
+        {
+            if (playerTransform == null) return;
+            distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
+        }
+
         private void CheckPlayerDistance()
         {
             if (player == null) return;
             
-            float distance = Vector3.Distance(transform.position, player.transform.position);
             bool wasInRange = playerInRange;
-            playerInRange = distance <= interactionRange;
+            playerInRange = distanceToPlayer <= interactionRange;
             
             if (playerInRange != wasInRange)
             {
@@ -125,7 +144,7 @@ namespace GameJam2026
                     break;
                     
                 case TowerState.Active:
-                    promptText.text = "Tower Online - Signal Transmitting";
+                    promptText.text = "Tower Online - Signal Transmitting!";
                     break;
             }
         }
@@ -227,27 +246,34 @@ namespace GameJam2026
 
         private void UpdateVisualState()
         {
-            // Update models
-            if (brokenModel != null) brokenModel.SetActive(currentState == TowerState.Broken);
-            if (repairedModel != null) repairedModel.SetActive(currentState == TowerState.Repaired);
-            if (activeModel != null) activeModel.SetActive(currentState == TowerState.Active);
+            // Update models based on state
+            // If you only have one model, leave these references empty and just use the light
+            if (brokenModel != null) 
+                brokenModel.SetActive(currentState == TowerState.Broken);
+            if (repairedModel != null) 
+                repairedModel.SetActive(currentState == TowerState.Repaired);
+            if (activeModel != null) 
+                activeModel.SetActive(currentState == TowerState.Active);
             
-            // Update light
+            // Update light color and intensity based on state
             if (towerLight != null)
             {
                 switch (currentState)
                 {
                     case TowerState.Broken:
                         towerLight.color = brokenColor;
-                        towerLight.intensity = 2f;
+                        towerLight.intensity = 3f;
+                        towerLight.range = 15f;
                         break;
                     case TowerState.Repaired:
                         towerLight.color = repairedColor;
-                        towerLight.intensity = 5f;
+                        towerLight.intensity = 6f;
+                        towerLight.range = 25f;
                         break;
                     case TowerState.Active:
                         towerLight.color = activeColor;
                         towerLight.intensity = 10f;
+                        towerLight.range = 50f;
                         break;
                 }
             }
@@ -300,5 +326,33 @@ namespace GameJam2026
             Repaired,
             Active
         }
+        
+        #region Debug Methods
+        
+        [ContextMenu("Force Repair Tower")]
+        private void DebugRepairTower()
+        {
+            RepairTower();
+        }
+        
+        [ContextMenu("Force Activate Tower")]
+        private void DebugActivateTower()
+        {
+            if (currentState == TowerState.Broken)
+            {
+                RepairTower();
+            }
+            ActivateTower();
+        }
+        
+        [ContextMenu("Reset Tower")]
+        private void DebugResetTower()
+        {
+            currentState = TowerState.Broken;
+            UpdateVisualState();
+            Debug.Log("Tower reset to broken state");
+        }
+        
+        #endregion
     }
 }

@@ -5,13 +5,14 @@ using TMPro;
 namespace GameJam2026
 {
     /// <summary>
-    /// Manages all UI elements for displaying rover attributes with percentage text,
-    /// status bars, and gradient-based status indicator lights
+    /// Manages all UI elements for displaying rover attributes
+    /// Comm bars now show BOTH comm range AND signal tower proximity
     /// </summary>
     public class RoverUIManager : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private RoverAttributeManager roverAttributes;
+        [SerializeField] private SignalTower signalTower; // NEW: Reference to tower
 
         [Header("Power UI")]
         [SerializeField] private Image powerFillBar;
@@ -35,7 +36,10 @@ namespace GameJam2026
         [SerializeField] private SignalBarsUI commSignalBars;
         [SerializeField] private Image commStatusLight;
         [SerializeField] private TextMeshProUGUI commPercentageText;
+        [SerializeField] private TextMeshProUGUI commLabelText; // NEW: To change label text
         [SerializeField] private Gradient commStatusGradient;
+        [SerializeField] private bool showTowerSignal = true; // Toggle between modes
+        [SerializeField] private float maxTowerSignalDistance = 100f;
 
         [Header("Cargo UI")]
         [SerializeField] private Image cargoFillBar;
@@ -72,10 +76,14 @@ namespace GameJam2026
 
         private void Awake()
         {
-            // Find rover attributes early
             if (roverAttributes == null)
             {
                 roverAttributes = FindObjectOfType<RoverAttributeManager>();
+            }
+            
+            if (signalTower == null)
+            {
+                signalTower = FindObjectOfType<SignalTower>();
             }
 
             InitializeGradients();
@@ -101,12 +109,11 @@ namespace GameJam2026
         {
             if (roverAttributes == null)
             {
-                Debug.LogError("RoverAttributeManager not found! Please assign it in the inspector.");
+                Debug.LogError("RoverAttributeManager not found!");
                 enabled = false;
                 return;
             }
 
-            // Force initial update
             UpdateAllUI();
             
             if (warningPanel != null)
@@ -141,22 +148,24 @@ namespace GameJam2026
         {
             if (roverAttributes == null) return;
 
-            // Force update every frame if enabled (for debugging/testing)
             if (forceUpdateEveryFrame)
             {
                 UpdateAllUI();
             }
 
-            // Smooth transitions for bars
             if (smoothTransitions)
             {
                 SmoothUpdateBars();
             }
 
-            // Update day/night indicator every frame
             UpdateDayNightUI();
+            
+            // Update comm bars for tower signal
+            if (showTowerSignal && signalTower != null)
+            {
+                UpdateTowerSignalUI();
+            }
 
-            // Pulse warning light if active
             if (warningPanel != null && warningPanel.activeSelf && pulseWarningLight && warningStatusLight != null)
             {
                 warningPulseTime += Time.deltaTime * pulseSpeed;
@@ -172,7 +181,13 @@ namespace GameJam2026
             UpdatePowerUI(roverAttributes.CurrentPower, roverAttributes.MaxPower);
             UpdateSpeedUI(roverAttributes.SpeedMultiplier);
             UpdateHeatUI(roverAttributes.CurrentHeat, roverAttributes.MaxHeat);
-            UpdateCommRangeUI(roverAttributes.CurrentCommunicationRange, roverAttributes.MaxCommunicationRange);
+            
+            if (!showTowerSignal || signalTower == null || signalTower.IsFullyActivated)
+            {
+                // Show normal comm range when tower is active or not in tower mode
+                UpdateCommRangeUI(roverAttributes.CurrentCommunicationRange, roverAttributes.MaxCommunicationRange);
+            }
+            
             UpdateCargoUI(roverAttributes.CurrentCargoWeight, roverAttributes.MaxCargoCapacity);
         }
 
@@ -203,24 +218,21 @@ namespace GameJam2026
             if (!smoothTransitions && powerFillBar != null)
                 powerFillBar.fillAmount = normalizedPercentage;
 
-            // Update percentage text - just the number
             if (powerPercentageText != null)
             {
                 powerPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
-            // Update status light color based on gradient
             if (powerStatusLight != null && powerStatusGradient != null)
                 powerStatusLight.color = powerStatusGradient.Evaluate(normalizedPercentage);
 
-            // Also update bar color to match
             if (powerFillBar != null && powerStatusGradient != null)
                 powerFillBar.color = powerStatusGradient.Evaluate(normalizedPercentage);
         }
 
         private void UpdateSpeedUI(float multiplier)
         {
-            float normalizedSpeed = Mathf.Clamp01(multiplier / 2f); // Assuming max multiplier is 2
+            float normalizedSpeed = Mathf.Clamp01(multiplier / 2f);
             float percentage = normalizedSpeed * 100f;
             
             targetSpeedFill = normalizedSpeed;
@@ -228,17 +240,14 @@ namespace GameJam2026
             if (!smoothTransitions && speedFillBar != null)
                 speedFillBar.fillAmount = normalizedSpeed;
 
-            // Update percentage text - just the number
             if (speedPercentageText != null)
             {
                 speedPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
-            // Update status light color based on gradient
             if (speedStatusLight != null && speedStatusGradient != null)
                 speedStatusLight.color = speedStatusGradient.Evaluate(normalizedSpeed);
 
-            // Also update bar color to match
             if (speedFillBar != null && speedStatusGradient != null)
                 speedFillBar.color = speedStatusGradient.Evaluate(normalizedSpeed);
         }
@@ -253,17 +262,14 @@ namespace GameJam2026
             if (!smoothTransitions && heatFillBar != null)
                 heatFillBar.fillAmount = normalizedPercentage;
 
-            // Update percentage text - just the number
             if (heatPercentageText != null)
             {
                 heatPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
-            // Update status light color based on gradient
             if (heatStatusLight != null && heatStatusGradient != null)
                 heatStatusLight.color = heatStatusGradient.Evaluate(normalizedPercentage);
 
-            // Also update bar color to match
             if (heatFillBar != null && heatStatusGradient != null)
                 heatFillBar.color = heatStatusGradient.Evaluate(normalizedPercentage);
         }
@@ -273,21 +279,62 @@ namespace GameJam2026
             float percentage = (current / max) * 100f;
             float normalizedPercentage = current / max;
 
-            // Update percentage text - just the number
             if (commPercentageText != null)
             {
                 commPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
-            // Update signal bars
             if (commSignalBars != null)
             {
                 commSignalBars.UpdateSignalStrength(normalizedPercentage);
             }
 
-            // Update status light color based on gradient
             if (commStatusLight != null && commStatusGradient != null)
                 commStatusLight.color = commStatusGradient.Evaluate(normalizedPercentage);
+            
+            // Update label to show it's comm range
+            if (commLabelText != null)
+            {
+                commLabelText.text = "COMM";
+            }
+        }
+
+        // NEW: Update comm bars based on tower distance
+        private void UpdateTowerSignalUI()
+        {
+            if (signalTower == null || commSignalBars == null) return;
+            
+            // If tower is already active, show normal comm range
+            if (signalTower.IsFullyActivated)
+            {
+                UpdateCommRangeUI(roverAttributes.CurrentCommunicationRange, roverAttributes.MaxCommunicationRange);
+                return;
+            }
+
+            // Calculate signal strength based on distance to tower
+            float distance = signalTower.DistanceToPlayer;
+            float signalStrength = 1f - Mathf.Clamp01(distance / maxTowerSignalDistance);
+            
+            // Update signal bars with tower signal strength
+            commSignalBars.UpdateSignalStrength(signalStrength);
+            
+            // Update percentage text to show distance instead
+            if (commPercentageText != null)
+            {
+                commPercentageText.text = $"{distance:F0}";
+            }
+            
+            // Update status light based on distance
+            if (commStatusLight != null && commStatusGradient != null)
+            {
+                commStatusLight.color = commStatusGradient.Evaluate(signalStrength);
+            }
+            
+            // Update label to show it's tower signal
+            if (commLabelText != null)
+            {
+                commLabelText.text = "TOWER";
+            }
         }
 
         private void UpdateCargoUI(float current, float max)
@@ -300,17 +347,14 @@ namespace GameJam2026
             if (!smoothTransitions && cargoFillBar != null)
                 cargoFillBar.fillAmount = normalizedPercentage;
 
-            // Update percentage text - just the number
             if (cargoPercentageText != null)
             {
                 cargoPercentageText.text = $"{Mathf.RoundToInt(percentage)}";
             }
 
-            // Update status light color based on gradient
             if (cargoStatusLight != null && cargoStatusGradient != null)
                 cargoStatusLight.color = cargoStatusGradient.Evaluate(normalizedPercentage);
 
-            // Also update bar color to match
             if (cargoFillBar != null && cargoStatusGradient != null)
                 cargoFillBar.color = cargoStatusGradient.Evaluate(normalizedPercentage);
         }
@@ -348,7 +392,6 @@ namespace GameJam2026
                 warningText.text = warningMessage;
             }
 
-            // Auto-hide warning after 3 seconds if not critical anymore
             CancelInvoke(nameof(CheckAndHideWarning));
             Invoke(nameof(CheckAndHideWarning), 3f);
         }
@@ -383,7 +426,6 @@ namespace GameJam2026
 
         private void InitializeGradients()
         {
-            // Power gradient: Red (0%) → Yellow (50%) → Green (100%)
             if (powerStatusGradient == null || powerStatusGradient.colorKeys.Length == 0)
             {
                 powerStatusGradient = new Gradient();
@@ -391,31 +433,25 @@ namespace GameJam2026
                 colorKeys[0] = new GradientColorKey(Color.red, 0f);
                 colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
                 colorKeys[2] = new GradientColorKey(Color.green, 1f);
-
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
-
                 powerStatusGradient.SetKeys(colorKeys, alphaKeys);
             }
 
-            // Speed gradient: Blue (0%) → Cyan (50%) → Green (100%)
             if (speedStatusGradient == null || speedStatusGradient.colorKeys.Length == 0)
             {
                 speedStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(new Color(0.3f, 0.3f, 1f), 0f); // Blue
+                colorKeys[0] = new GradientColorKey(new Color(0.3f, 0.3f, 1f), 0f);
                 colorKeys[1] = new GradientColorKey(Color.cyan, 0.5f);
                 colorKeys[2] = new GradientColorKey(Color.green, 1f);
-
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
-
                 speedStatusGradient.SetKeys(colorKeys, alphaKeys);
             }
 
-            // Heat gradient: Green (0%) → Yellow (50%) → Red (100%)
             if (heatStatusGradient == null || heatStatusGradient.colorKeys.Length == 0)
             {
                 heatStatusGradient = new Gradient();
@@ -423,31 +459,25 @@ namespace GameJam2026
                 colorKeys[0] = new GradientColorKey(Color.green, 0f);
                 colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
                 colorKeys[2] = new GradientColorKey(Color.red, 1f);
-
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
-
                 heatStatusGradient.SetKeys(colorKeys, alphaKeys);
             }
 
-            // Communication gradient: Red (0%) → Orange (50%) → Green (100%)
             if (commStatusGradient == null || commStatusGradient.colorKeys.Length == 0)
             {
                 commStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
                 colorKeys[0] = new GradientColorKey(Color.red, 0f);
-                colorKeys[1] = new GradientColorKey(new Color(1f, 0.5f, 0f), 0.5f); // Orange
+                colorKeys[1] = new GradientColorKey(new Color(1f, 0.5f, 0f), 0.5f);
                 colorKeys[2] = new GradientColorKey(Color.green, 1f);
-
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
-
                 commStatusGradient.SetKeys(colorKeys, alphaKeys);
             }
 
-            // Cargo gradient: Green (0%) → Yellow (70%) → Red (100%)
             if (cargoStatusGradient == null || cargoStatusGradient.colorKeys.Length == 0)
             {
                 cargoStatusGradient = new Gradient();
@@ -455,33 +485,10 @@ namespace GameJam2026
                 colorKeys[0] = new GradientColorKey(Color.green, 0f);
                 colorKeys[1] = new GradientColorKey(Color.yellow, 0.7f);
                 colorKeys[2] = new GradientColorKey(Color.red, 1f);
-
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
-
                 cargoStatusGradient.SetKeys(colorKeys, alphaKeys);
-            }
-        }
-
-        #endregion
-
-        #region Debug Methods
-
-        [ContextMenu("Force Update UI")]
-        private void DebugForceUpdate()
-        {
-            UpdateAllUI();
-            Debug.Log("UI Force Updated!");
-        }
-
-        [ContextMenu("Test Power Change")]
-        private void DebugTestPower()
-        {
-            if (roverAttributes != null)
-            {
-                roverAttributes.ModifyPower(-10f);
-                Debug.Log($"Power: {roverAttributes.CurrentPower}");
             }
         }
 
