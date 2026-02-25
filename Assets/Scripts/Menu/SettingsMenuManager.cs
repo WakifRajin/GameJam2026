@@ -6,6 +6,7 @@ namespace GameJam2026
 {
     /// <summary>
     /// Handles settings menu controls (volume, graphics, etc.)
+    /// Works with both MainMenu and PauseMenu
     /// </summary>
     public class SettingsMenuManager : MonoBehaviour
     {
@@ -29,10 +30,18 @@ namespace GameJam2026
         [Header("Back Button")]
         [SerializeField] private Button backButton;
         
+        [Header("Debug")]
+        [SerializeField] private bool enableDebugLogs = false;
+        
         private Resolution[] resolutions;
+        private MainMenuManager mainMenuManager;
+        private PauseMenuManager pauseMenuManager;
 
         private void Start()
         {
+            // Find menu managers
+            FindMenuManagers();
+            
             // Load saved settings
             LoadSettings();
             
@@ -44,10 +53,37 @@ namespace GameJam2026
             if (backButton != null)
             {
                 backButton.onClick.AddListener(OnBackClicked);
+                DebugLog("Back button listener added");
+            }
+            else
+            {
+                Debug.LogError("SettingsMenuManager: Back button not assigned!");
             }
             
             // Populate resolution dropdown
             SetupResolutionDropdown();
+        }
+
+        private void FindMenuManagers()
+        {
+            // Try to find main menu manager
+            mainMenuManager = FindObjectOfType<MainMenuManager>();
+            if (mainMenuManager != null)
+            {
+                DebugLog("Found MainMenuManager");
+            }
+            
+            // Try to find pause menu manager
+            pauseMenuManager = FindObjectOfType<PauseMenuManager>();
+            if (pauseMenuManager != null)
+            {
+                DebugLog("Found PauseMenuManager");
+            }
+            
+            if (mainMenuManager == null && pauseMenuManager == null)
+            {
+                Debug.LogWarning("SettingsMenuManager: No MainMenuManager or PauseMenuManager found! Back button won't work.");
+            }
         }
 
         #region Audio Settings
@@ -75,7 +111,6 @@ namespace GameJam2026
 
         private void OnMusicVolumeChanged(float value)
         {
-            // Apply to music audio sources (you can implement this based on your audio system)
             if (musicVolumeText != null)
                 musicVolumeText.text = $"{(int)(value * 100)}%";
             
@@ -84,7 +119,6 @@ namespace GameJam2026
 
         private void OnSFXVolumeChanged(float value)
         {
-            // Apply to SFX audio sources (you can implement this based on your audio system)
             if (sfxVolumeText != null)
                 sfxVolumeText.text = $"{(int)(value * 100)}%";
             
@@ -138,22 +172,24 @@ namespace GameJam2026
         {
             QualitySettings.SetQualityLevel(qualityIndex);
             PlayerPrefs.SetInt("QualityLevel", qualityIndex);
-            Debug.Log($"Quality changed to: {QualitySettings.names[qualityIndex]}");
+            DebugLog($"Quality changed to: {QualitySettings.names[qualityIndex]}");
         }
 
         private void OnFullscreenChanged(bool isFullscreen)
         {
             Screen.fullScreen = isFullscreen;
             PlayerPrefs.SetInt("Fullscreen", isFullscreen ? 1 : 0);
-            Debug.Log($"Fullscreen: {isFullscreen}");
+            DebugLog($"Fullscreen: {isFullscreen}");
         }
 
         private void OnResolutionChanged(int resolutionIndex)
         {
+            if (resolutionIndex < 0 || resolutionIndex >= resolutions.Length) return;
+            
             Resolution resolution = resolutions[resolutionIndex];
             Screen.SetResolution(resolution.width, resolution.height, Screen.fullScreen);
             PlayerPrefs.SetInt("ResolutionIndex", resolutionIndex);
-            Debug.Log($"Resolution changed to: {resolution.width}x{resolution.height}");
+            DebugLog($"Resolution changed to: {resolution.width}x{resolution.height}");
         }
 
         #endregion
@@ -172,9 +208,6 @@ namespace GameJam2026
                 sensitivityText.text = value.ToString("F1");
             
             PlayerPrefs.SetFloat("MouseSensitivity", value);
-            
-            // Apply to your camera controller if needed
-            // FindObjectOfType<CameraController>()?.SetSensitivity(value);
         }
 
         #endregion
@@ -230,24 +263,84 @@ namespace GameJam2026
 
         #endregion
 
+        #region Back Button Handler
+
         private void OnBackClicked()
         {
-            // This will be called by the back button
-            // The specific menu manager (Main or Pause) will handle showing the correct panel
+            Debug.Log("=== Settings Back Button Clicked ===");
             
-            MainMenuManager mainMenu = FindObjectOfType<MainMenuManager>();
-            if (mainMenu != null)
+            // Try MainMenuManager first
+            if (mainMenuManager != null)
             {
-                mainMenu.OnBackToMain();
+                Debug.Log("Calling MainMenuManager.OnBackToMain()");
+                mainMenuManager.OnBackToMain();
                 return;
             }
             
-            PauseMenuManager pauseMenu = FindObjectOfType<PauseMenuManager>();
-            if (pauseMenu != null)
+            // Try PauseMenuManager second
+            if (pauseMenuManager != null)
             {
-                pauseMenu.OnBackToPauseMenu();
+                Debug.Log("Calling PauseMenuManager.OnBackToPauseMenu()");
+                pauseMenuManager.OnBackToPauseMenu();
                 return;
+            }
+            
+            // Fallback: Try to find them again (in case they were instantiated after Start)
+            Debug.LogWarning("No menu manager found, searching again...");
+            FindMenuManagers();
+            
+            if (mainMenuManager != null)
+            {
+                Debug.Log("Found MainMenuManager on retry");
+                mainMenuManager.OnBackToMain();
+                return;
+            }
+            
+            if (pauseMenuManager != null)
+            {
+                Debug.Log("Found PauseMenuManager on retry");
+                pauseMenuManager.OnBackToPauseMenu();
+                return;
+            }
+            
+            // Last resort: manually hide settings panel
+            Debug.LogError("SettingsMenuManager: Could not find any menu manager! Manually hiding settings panel.");
+            gameObject.SetActive(false);
+        }
+
+        #endregion
+
+        private void DebugLog(string message)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"[SettingsMenu] {message}");
             }
         }
+
+        #region Debug Methods
+
+        [ContextMenu("Test Back Button")]
+        private void TestBackButton()
+        {
+            OnBackClicked();
+        }
+
+        [ContextMenu("Print Status")]
+        private void PrintStatus()
+        {
+            Debug.Log("=== SETTINGS MENU STATUS ===");
+            Debug.Log($"Back Button Assigned: {backButton != null}");
+            Debug.Log($"MainMenuManager Found: {mainMenuManager != null}");
+            Debug.Log($"PauseMenuManager Found: {pauseMenuManager != null}");
+            
+            if (backButton != null)
+            {
+                Debug.Log($"Back Button Interactable: {backButton.interactable}");
+                Debug.Log($"Back Button Active: {backButton.gameObject.activeInHierarchy}");
+            }
+        }
+
+        #endregion
     }
 }
