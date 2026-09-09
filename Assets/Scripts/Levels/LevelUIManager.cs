@@ -20,9 +20,11 @@ namespace GameJam2026
         [Header("Timer UI")]
         [SerializeField] private TextMeshProUGUI timerText;
         [SerializeField] private Image timerFillBar;
-        [SerializeField] private Color normalTimeColor = Color.green;
-        [SerializeField] private Color warningTimeColor = Color.yellow;
-        [SerializeField] private Color criticalTimeColor = Color.red;
+        // Defaults come from UIPalette so the timer matches the rest of the HUD instead of
+        // being pure green/yellow/red.
+        [SerializeField] private Color normalTimeColor = new Color32(0x4A, 0xDE, 0x80, 0xFF);
+        [SerializeField] private Color warningTimeColor = new Color32(0xF0, 0xB4, 0x29, 0xFF);
+        [SerializeField] private Color criticalTimeColor = new Color32(0xF8, 0x51, 0x49, 0xFF);
         
         [Header("Level Info")]
         [SerializeField] private TextMeshProUGUI levelTitleText;

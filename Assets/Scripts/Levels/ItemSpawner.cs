@@ -21,6 +21,10 @@ namespace GameJam2026
         [SerializeField] private GameObject defaultItemPrefab;
         
         [Header("Spawn Area")]
+        [Tooltip("Cover the whole active terrain instead of the box below. Keeps loot spread across the map rather than piled around the start point.")]
+        [SerializeField] private bool fitToTerrain = true;
+        [Tooltip("Metres to keep clear of the terrain edge when fitting.")]
+        [SerializeField] private float terrainEdgeMargin = 40f;
         [SerializeField] private Vector3 spawnAreaCenter = Vector3.zero;
         [SerializeField] private Vector3 spawnAreaSize = new Vector3(50f, 0f, 50f);
         [SerializeField] private LayerMask groundLayer = -1;
@@ -28,12 +32,45 @@ namespace GameJam2026
         [SerializeField] private float spawnHeightCheck = 100f;
         
         [Header("Spawn Rules")]
+        [Tooltip("Reject spots steeper than this so items do not end up on cliff faces the rover cannot reach.")]
+        [Range(0f, 90f)]
+        [SerializeField] private float maxSlopeAngle = 30f;
         [SerializeField] private float minDistanceBetweenItems = 5f;
         [SerializeField] private int maxSpawnAttempts = 50;
         [SerializeField] private bool spawnOnStart = true;
         [SerializeField] private bool useTerrainHeight = true;
         
         private List<Vector3> spawnedPositions = new List<Vector3>();
+
+        /// <summary>Centre of the area actually used, honouring Fit To Terrain.</summary>
+        private Vector3 EffectiveCenter
+        {
+            get
+            {
+                var terrain = ActiveTerrain;
+                if (!fitToTerrain || terrain == null) return spawnAreaCenter;
+
+                Vector3 size = terrain.terrainData.size;
+                Vector3 origin = terrain.transform.position;
+                return new Vector3(origin.x + size.x * 0.5f, spawnAreaCenter.y, origin.z + size.z * 0.5f);
+            }
+        }
+
+        /// <summary>Size of the area actually used, honouring Fit To Terrain.</summary>
+        private Vector3 EffectiveSize
+        {
+            get
+            {
+                var terrain = ActiveTerrain;
+                if (!fitToTerrain || terrain == null) return spawnAreaSize;
+
+                Vector3 size = terrain.terrainData.size;
+                float margin = Mathf.Max(0f, terrainEdgeMargin) * 2f;
+                return new Vector3(Mathf.Max(1f, size.x - margin), 0f, Mathf.Max(1f, size.z - margin));
+            }
+        }
+
+        private Terrain ActiveTerrain => Terrain.activeTerrain != null ? Terrain.activeTerrain : FindObjectOfType<Terrain>();
 
         private void Start()
         {
@@ -190,10 +227,12 @@ namespace GameJam2026
             for (int attempt = 0; attempt < maxSpawnAttempts; attempt++)
             {
                 // Random position in spawn area (XZ plane)
-                Vector3 randomPos = spawnAreaCenter + new Vector3(
-                    Random.Range(-spawnAreaSize.x / 2f, spawnAreaSize.x / 2f),
+                Vector3 center = EffectiveCenter;
+                Vector3 size = EffectiveSize;
+                Vector3 randomPos = center + new Vector3(
+                    Random.Range(-size.x / 2f, size.x / 2f),
                     0f,
-                    Random.Range(-spawnAreaSize.z / 2f, spawnAreaSize.z / 2f)
+                    Random.Range(-size.z / 2f, size.z / 2f)
                 );
                 
                 // Find ground height
@@ -207,6 +246,9 @@ namespace GameJam2026
                     
                     if (Physics.Raycast(rayStart, Vector3.down, out hit, spawnHeightCheck * 2f, groundLayer))
                     {
+                        // Skip cliff faces - an item on a 60-degree slope is effectively unreachable.
+                        if (Vector3.Angle(hit.normal, Vector3.up) > maxSlopeAngle) continue;
+
                         groundPos = hit.point + Vector3.up * heightOffset;
                     }
                     else
@@ -243,9 +285,9 @@ namespace GameJam2026
 
         private void OnDrawGizmosSelected()
         {
-            // Draw spawn area
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireCube(spawnAreaCenter, spawnAreaSize);
+            // Draw spawn area actually in use
+            Gizmos.color = fitToTerrain ? Color.cyan : Color.yellow;
+            Gizmos.DrawWireCube(EffectiveCenter, EffectiveSize + Vector3.up * 2f);
             
             // Draw spawned positions in play mode
             if (Application.isPlaying && spawnedPositions != null)
@@ -344,8 +386,10 @@ namespace GameJam2026
             
             Debug.Log($"Total items to spawn: {totalItems}");
             Debug.Log($"Default Prefab: {(defaultItemPrefab != null ? defaultItemPrefab.name : "NOT ASSIGNED - ERROR!")}");
-            Debug.Log($"Spawn Area Center: {spawnAreaCenter}");
-            Debug.Log($"Spawn Area Size: {spawnAreaSize}");
+            Debug.Log($"Fit To Terrain: {fitToTerrain}");
+            Debug.Log($"Spawn Area Center: {EffectiveCenter} (field: {spawnAreaCenter})");
+            Debug.Log($"Spawn Area Size: {EffectiveSize} (field: {spawnAreaSize})");
+            Debug.Log($"Max Slope: {maxSlopeAngle} deg");
             Debug.Log($"Min Distance: {minDistanceBetweenItems}");
             Debug.Log($"Use Terrain Height: {useTerrainHeight}");
             Debug.Log($"Ground Layer: {groundLayer.value}");

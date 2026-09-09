@@ -26,6 +26,8 @@ namespace GameJam2026
         [Header("Settings")]
         public bool isOptional = false;
         public bool trackProgress = true;
+        [Tooltip("CollectItems only. ON: progress mirrors what is currently aboard, so it falls again when you spend or consume the items. OFF: progress latches - once you have gathered enough it stays ticked, like a checklist.")]
+        public bool liveTracking = true;
     }
 
     public enum ObjectiveType

@@ -170,7 +170,7 @@ namespace GameJam2026
             {
                 warningPulseTime += Time.deltaTime * pulseSpeed;
                 float alpha = (Mathf.Sin(warningPulseTime) + 1f) * 0.5f;
-                Color warningColor = Color.red;
+                Color warningColor = UIPalette.Danger;
                 warningColor.a = Mathf.Lerp(0.3f, 1f, alpha);
                 warningStatusLight.color = warningColor;
             }
@@ -430,9 +430,9 @@ namespace GameJam2026
             {
                 powerStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(Color.red, 0f);
-                colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
-                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+                colorKeys[0] = new GradientColorKey(UIPalette.Danger, 0f);
+                colorKeys[1] = new GradientColorKey(UIPalette.Warning, 0.5f);
+                colorKeys[2] = new GradientColorKey(UIPalette.Power, 1f);
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
@@ -443,9 +443,9 @@ namespace GameJam2026
             {
                 speedStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(new Color(0.3f, 0.3f, 1f), 0f);
-                colorKeys[1] = new GradientColorKey(Color.cyan, 0.5f);
-                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+                colorKeys[0] = new GradientColorKey(UIPalette.Comm, 0f);
+                colorKeys[1] = new GradientColorKey(UIPalette.Comm, 0.5f);
+                colorKeys[2] = new GradientColorKey(UIPalette.Success, 1f);
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
@@ -456,9 +456,9 @@ namespace GameJam2026
             {
                 heatStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(Color.green, 0f);
-                colorKeys[1] = new GradientColorKey(Color.yellow, 0.5f);
-                colorKeys[2] = new GradientColorKey(Color.red, 1f);
+                colorKeys[0] = new GradientColorKey(UIPalette.Comm, 0f);
+                colorKeys[1] = new GradientColorKey(UIPalette.Warning, 0.5f);
+                colorKeys[2] = new GradientColorKey(UIPalette.Heat, 1f);
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
@@ -469,9 +469,9 @@ namespace GameJam2026
             {
                 commStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(Color.red, 0f);
-                colorKeys[1] = new GradientColorKey(new Color(1f, 0.5f, 0f), 0.5f);
-                colorKeys[2] = new GradientColorKey(Color.green, 1f);
+                colorKeys[0] = new GradientColorKey(UIPalette.Danger, 0f);
+                colorKeys[1] = new GradientColorKey(UIPalette.Warning, 0.5f);
+                colorKeys[2] = new GradientColorKey(UIPalette.Comm, 1f);
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);
@@ -482,9 +482,9 @@ namespace GameJam2026
             {
                 cargoStatusGradient = new Gradient();
                 GradientColorKey[] colorKeys = new GradientColorKey[3];
-                colorKeys[0] = new GradientColorKey(Color.green, 0f);
-                colorKeys[1] = new GradientColorKey(Color.yellow, 0.7f);
-                colorKeys[2] = new GradientColorKey(Color.red, 1f);
+                colorKeys[0] = new GradientColorKey(UIPalette.Cargo, 0f);
+                colorKeys[1] = new GradientColorKey(UIPalette.Cargo, 0.7f);
+                colorKeys[2] = new GradientColorKey(UIPalette.Warning, 1f);
                 GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
                 alphaKeys[0] = new GradientAlphaKey(1f, 0f);
                 alphaKeys[1] = new GradientAlphaKey(1f, 1f);

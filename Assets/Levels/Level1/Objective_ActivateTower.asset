@@ -12,8 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27db43c2f56573741945f80e1988513a, type: 3}
   m_Name: Objective_ActivateTower
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
-  objectiveTitle: Activate Signal Tower
-  objectiveDescription: Repair and power the signal tower before nightfall
+  objectiveTitle: Repair and power the Signal Tower
+  objectiveDescription: Drive to the tower with the parts aboard, repair it, then
+    feed it the cells. This is the mission.
   objectiveIcon: {fileID: 0}
   objectiveType: 4
   targetValue: 1

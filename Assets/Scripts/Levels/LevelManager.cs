@@ -417,7 +417,10 @@ namespace GameJam2026
                 ? gridInventoryManager.TotalItemCount
                 : gridInventoryManager.CountUnitsOfCategory(objective.targetResourceType);
 
-            tracker.SetLiveProgress(held);
+            // Live objectives mirror the hold and can fall back; latching ones behave like a
+            // checklist item that stays ticked once earned.
+            if (objective.liveTracking) tracker.SetLiveProgress(held);
+            else if (!tracker.isCompleted) tracker.UpdateProgress(held);
             DebugLog($"Objective '{objective.objectiveTitle}': {held}/{objective.targetValue}");
         }
 

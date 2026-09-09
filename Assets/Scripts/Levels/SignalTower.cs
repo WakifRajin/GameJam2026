@@ -20,6 +20,8 @@ namespace GameJam2026
         [SerializeField] private float powerRequired = 50f;
         [Tooltip("Optional. This tower stays locked until the named tower is fully active.")]
         [SerializeField] private SignalTower prerequisiteTower;
+        [Tooltip("ON: pay with Power Cells carried in cargo (matches how the repair spends scrap). OFF: siphon the rover's own battery, the old behaviour.")]
+        [SerializeField] private bool powerFromCargo = true;
 
         [Header("Activation Rewards")]
         [Tooltip("Permanent comm range granted when this tower goes online.")]
@@ -28,6 +30,8 @@ namespace GameJam2026
         [SerializeField] private float maxPowerReward = 0f;
         [Tooltip("Permanent cargo capacity granted when this goes online.")]
         [SerializeField] private float cargoCapacityReward = 0f;
+        [Tooltip("Extra inventory columns granted when this goes online (4 slots per column).")]
+        [SerializeField] private int inventoryColumnsReward = 0;
         
         [Header("References")]
         [SerializeField] private GridInventoryManager gridInventoryManager;
@@ -82,6 +86,18 @@ namespace GameJam2026
         /// <summary>True while an earlier relay in the chain is still offline.</summary>
         public bool IsLocked => prerequisiteTower != null && !prerequisiteTower.IsFullyActivated;
 
+        /// <summary>
+        /// Power available to spend here. Power Cells in cargo by default, so activation costs
+        /// something you had to haul - the rover's own battery is what keeps you alive.
+        /// </summary>
+        private float GetAvailablePower()
+        {
+            if (!powerFromCargo) return roverAttributes != null ? roverAttributes.CurrentPower : 0f;
+            return gridInventoryManager != null ? gridInventoryManager.GetResource(ResourceIds.Power) : 0f;
+        }
+
+        private string PowerSourceLabel => powerFromCargo ? "cell power" : "battery";
+
         /// <summary>What the rover still needs to take the next step here, for HUD display.</summary>
         public string GetRequirementSummary()
         {
@@ -92,8 +108,7 @@ namespace GameJam2026
                 case TowerState.Broken:
                     return $"{scrapMetalRequired} scrap ({GetPlayerScrapMetal()} held)";
                 case TowerState.Repaired:
-                    float have = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
-                    return $"{powerRequired:F0} power ({have:F0} held)";
+                    return $"{powerRequired:F0} {PowerSourceLabel} ({GetAvailablePower():F0} held)";
                 default:
                     return "Online";
             }
@@ -272,19 +287,33 @@ namespace GameJam2026
 
         private void AttemptActivation()
         {
-            float havePower = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
-            
-            Debug.Log($"[SignalTower] Activation attempt - Need: {powerRequired}, Have: {havePower:F0}");
-            
-            if (roverAttributes != null && havePower >= powerRequired)
+            float havePower = GetAvailablePower();
+
+            Debug.Log($"[SignalTower] Activation attempt - Need: {powerRequired} ({PowerSourceLabel}), Have: {havePower:F0}");
+
+            if (havePower < powerRequired)
             {
-                roverAttributes.ModifyPower(-powerRequired);
-                ActivateTower();
+                Debug.LogWarning($"[SignalTower] Insufficient {PowerSourceLabel}! Need {powerRequired}, have {havePower:F0}");
+                return;
+            }
+
+            if (powerFromCargo)
+            {
+                // Spends Power Cells out of cargo, exactly as the repair spends scrap.
+                if (gridInventoryManager == null ||
+                    !gridInventoryManager.ConsumeResource(ResourceIds.Power, powerRequired))
+                {
+                    Debug.LogWarning("[SignalTower] Could not spend cell power from cargo.");
+                    return;
+                }
             }
             else
             {
-                Debug.LogWarning($"[SignalTower] ❌ Insufficient power! Need {powerRequired}, have {havePower:F0}");
+                if (roverAttributes == null) return;
+                roverAttributes.ModifyPower(-powerRequired);
             }
+
+            ActivateTower();
         }
 
         private void RepairTower()
@@ -380,7 +409,11 @@ namespace GameJam2026
         /// </summary>
         private void GrantActivationRewards()
         {
-            if (roverAttributes == null) return;
+            if (roverAttributes == null)
+            {
+                Debug.LogWarning($"[SignalTower] {RelayName}: no rover reference, rewards skipped.");
+                return;
+            }
 
             if (commRangeReward > 0f)
             {
@@ -398,6 +431,14 @@ namespace GameJam2026
             {
                 roverAttributes.AddMaxCargoCapacity(cargoCapacityReward);
                 Debug.Log($"[SignalTower] {RelayName} reward: +{cargoCapacityReward} cargo capacity");
+            }
+
+            if (inventoryColumnsReward > 0 && gridInventoryManager != null)
+            {
+                gridInventoryManager.Resize(
+                    gridInventoryManager.GridWidth + inventoryColumnsReward,
+                    gridInventoryManager.GridHeight);
+                Debug.Log($"[SignalTower] {RelayName} reward: +{inventoryColumnsReward} inventory column(s)");
             }
         }
 
