@@ -12,13 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d64614a460292f4992f49d86491868b, type: 3}
   m_Name: New Upgrade
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.UpgradeRecipe
-  upgradeName: Upgrade
-  description: Upgrade description
+  upgradeId: max_power
+  upgradeName: Battery Capacity
+  description: Fuse scrap plating and stored charge into a larger cell array. Each
+    tier raises the rover's maximum power by 10.
   icon: {fileID: 0}
   upgradeType: 0
   costs:
-  - resourceType: 
-    amount: 0
+  - resourceType: Materials
+    amount: 3
+  - resourceType: Power
+    amount: 15
+  costGrowth: 1.5
   upgradeAmount: 10
-  currentLevel: 0
+  effectGrowth: 1
+  startingLevel: 0
   maxLevel: 5
+  prerequisites: []
+  currentLevel: 0

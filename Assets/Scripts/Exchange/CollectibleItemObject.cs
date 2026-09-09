@@ -130,45 +130,25 @@ namespace GameJam2026
                 return;
             }
 
-            // UPDATED: Try to get GridInventoryManager first (new system)
-            GridInventoryManager gridInventory = collector.GetComponent<GridInventoryManager>();
-            
-            if (gridInventory != null)
+            // The inventory usually sits on the rover root, but colliders often live on a child.
+            GridInventoryManager gridInventory =
+                collector.GetComponent<GridInventoryManager>() ??
+                collector.GetComponentInParent<GridInventoryManager>();
+
+            if (gridInventory == null)
             {
-                // NEW GRID-BASED SYSTEM
-                if (gridInventory.AddItem(itemData))
-                {
-                    Collect();
-                }
-                else
-                {
-                    Debug.Log($"Cannot collect {itemData.itemName} - inventory full or overweight!");
-                }
+                Debug.LogWarning($"Collector {collector.name} has no GridInventoryManager.");
+                return;
+            }
+
+            if (gridInventory.AddItem(itemData))
+            {
+                Collect();
             }
             else
             {
-                // FALLBACK: Try old list-based inventory
-                InventoryManager oldInventory = collector.GetComponent<InventoryManager>();
-                
-                if (oldInventory != null)
-                {
-                    if (oldInventory.CanAddItem(itemData))
-                    {
-                        bool added = oldInventory.AddItem(itemData);
-                        if (added)
-                        {
-                            Collect();
-                        }
-                    }
-                    else
-                    {
-                        Debug.Log($"Cannot collect {itemData.itemName} - inventory full!");
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning($"Collector {collector.name} has no GridInventoryManager or InventoryManager!");
-                }
+                // The manager raises OnPickupRejected with the specific reason for the UI.
+                Debug.Log($"Cannot collect {itemData.itemName} - inventory full or overweight.");
             }
         }
 

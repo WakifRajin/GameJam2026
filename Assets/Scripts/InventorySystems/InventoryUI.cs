@@ -1,12 +1,12 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using System.Collections.Generic;
 
 namespace GameJam2026
 {
     /// <summary>
-    /// Visual grid-based inventory UI with drag and drop
+    /// Grid inventory UI. Redraws from the manager rather than tracking state of its own, so a
+    /// resize, a load, or items picked up before the UI woke can never leave it out of sync.
     /// </summary>
     public class InventoryUI : MonoBehaviour
     {
@@ -15,525 +15,475 @@ namespace GameJam2026
         [Header("References")]
         [SerializeField] private GridInventoryManager inventoryManager;
         [SerializeField] private UpgradeManager upgradeManager;
-        
+
         [Header("Main Panel (Contains everything)")]
-        [SerializeField] private GameObject inventoryPanel; // The whole UI panel
-        
+        [SerializeField] private GameObject inventoryPanel;
+
         [Header("Sub-Containers (Inside main panel)")]
-        [SerializeField] private GameObject inventoryContainer; // The inventory tab content
-        [SerializeField] private GameObject upgradeContainer; // The upgrade tab content
+        [SerializeField] private GameObject inventoryContainer;
+        [SerializeField] private GameObject upgradeContainer;
         [SerializeField] private Transform gridContainer;
         [SerializeField] private GameObject inventorySlotPrefab;
-        
+
+        [Header("Grid Layout")]
+        [SerializeField] private Vector2 slotSize = new Vector2(80f, 80f);
+        [SerializeField] private Vector2 slotSpacing = new Vector2(5f, 5f);
+
         [Header("Info Display")]
         [SerializeField] private TextMeshProUGUI itemNameText;
         [SerializeField] private TextMeshProUGUI itemDescriptionText;
         [SerializeField] private Image itemIconImage;
         [SerializeField] private GameObject itemInfoPanel;
-        
+        [Tooltip("Optional line for weight / stack / resource value.")]
+        [SerializeField] private TextMeshProUGUI itemStatsText;
+
         [Header("Action Buttons")]
         [SerializeField] private Button consumeButton;
         [SerializeField] private Button discardButton;
+        [SerializeField] private Button sortButton;
         [SerializeField] private GameObject actionButtonsPanel;
-        
+
         [Header("Resource Display")]
         [SerializeField] private TextMeshProUGUI materialsText;
         [SerializeField] private TextMeshProUGUI techText;
         [SerializeField] private TextMeshProUGUI powerText;
-        
+        [Tooltip("Optional '12.5 / 50 kg' cargo readout.")]
+        [SerializeField] private TextMeshProUGUI weightText;
+        [Tooltip("Optional '7 / 24 slots' readout.")]
+        [SerializeField] private TextMeshProUGUI slotsText;
+
         [Header("Tabs")]
         [SerializeField] private Button inventoryTabButton;
         [SerializeField] private Button upgradeTabButton;
-        
+
         [Header("Pause Settings")]
         [SerializeField] private bool pauseGameWhenOpen = true;
         [SerializeField] private CanvasGroup gameplayUIGroup;
-        
+
         private InventorySlot[,] inventorySlots;
         private InventorySlot selectedSlot;
-        private bool isOpen = false;
-        
+        private bool isOpen;
+
+        // Restored on close instead of hardcoding 1, so closing the inventory from inside the
+        // pause menu does not resume the game.
+        private float timeScaleBeforeOpen = 1f;
+        private bool cursorVisibleBeforeOpen;
+        private CursorLockMode cursorLockBeforeOpen;
+
         public bool IsOpen => isOpen;
+
+        #region Lifecycle
 
         private void Awake()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-            }
-            else
+            if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
+            Instance = this;
         }
 
         private void Start()
         {
-            // Find managers
-            if (inventoryManager == null)
-            {
-                inventoryManager = FindObjectOfType<GridInventoryManager>();
-            }
-            
-            if (upgradeManager == null)
-            {
-                upgradeManager = FindObjectOfType<UpgradeManager>();
-            }
-            
-            // Verify EventSystem exists
+            if (inventoryManager == null) inventoryManager = FindObjectOfType<GridInventoryManager>();
+            if (upgradeManager == null) upgradeManager = FindObjectOfType<UpgradeManager>();
+
             if (UnityEngine.EventSystems.EventSystem.current == null)
             {
-                Debug.LogError("InventoryUI: No EventSystem found in scene! UI buttons won't work. Add one via: GameObject → UI → Event System");
+                Debug.LogError("InventoryUI: no EventSystem in the scene - UI clicks will not register. Add GameObject > UI > Event System.");
             }
-            
-            // Subscribe to events
+
             if (inventoryManager != null)
             {
-                inventoryManager.OnItemAddedToGrid += OnItemAddedToGrid;
-                inventoryManager.OnItemRemovedFromGrid += OnItemRemovedFromGrid;
-                inventoryManager.OnResourceChanged += OnResourceChanged;
+                inventoryManager.OnSlotChanged += HandleSlotChanged;
+                inventoryManager.OnInventoryRebuilt += RebuildGrid;
+                inventoryManager.OnResourceChanged += HandleResourceChanged;
+                inventoryManager.OnWeightChanged += HandleWeightChanged;
+                inventoryManager.OnPickupRejected += HandlePickupRejected;
                 inventoryManager.OnInventoryOpened += OpenInventory;
                 inventoryManager.OnInventoryClosed += CloseInventory;
             }
             else
             {
-                Debug.LogError("InventoryUI: GridInventoryManager not found!");
+                Debug.LogError("InventoryUI: GridInventoryManager not found.");
             }
-            
-            // Setup buttons
-            if (consumeButton != null)
-            {
-                consumeButton.onClick.AddListener(OnConsumeButtonClicked);
-                Debug.Log("Consume button listener added");
-            }
-            else
-            {
-                Debug.LogWarning("InventoryUI: Consume button not assigned!");
-            }
-            
-            if (discardButton != null)
-            {
-                discardButton.onClick.AddListener(OnDiscardButtonClicked);
-                Debug.Log("Discard button listener added");
-            }
-            else
-            {
-                Debug.LogWarning("InventoryUI: Discard button not assigned!");
-            }
-            
-            if (inventoryTabButton != null)
-                inventoryTabButton.onClick.AddListener(() => ShowTab(true));
-            
-            if (upgradeTabButton != null)
-                upgradeTabButton.onClick.AddListener(() => ShowTab(false));
-            
-            // Initialize
-            CreateInventoryGrid();
-            
-            // Close inventory at start
-            if (inventoryPanel != null)
-                inventoryPanel.SetActive(false);
-            
-            // Show inventory tab by default when opened
+
+            if (consumeButton != null) consumeButton.onClick.AddListener(OnConsumeButtonClicked);
+            if (discardButton != null) discardButton.onClick.AddListener(OnDiscardButtonClicked);
+            if (sortButton != null) sortButton.onClick.AddListener(OnSortButtonClicked);
+            if (inventoryTabButton != null) inventoryTabButton.onClick.AddListener(() => ShowTab(true));
+            if (upgradeTabButton != null) upgradeTabButton.onClick.AddListener(() => ShowTab(false));
+
+            RebuildGrid();
+
+            if (inventoryPanel != null) inventoryPanel.SetActive(false);
             ShowTab(true);
-            
-            if (actionButtonsPanel != null)
-                actionButtonsPanel.SetActive(false);
-            
-            if (itemInfoPanel != null)
-                itemInfoPanel.SetActive(false);
-            
-            // Make sure cursor is available for editor testing
-            #if UNITY_EDITOR
-            Cursor.visible = true;
-            Cursor.lockState = CursorLockMode.None;
-            #endif
-        }
-
-        private void CreateInventoryGrid()
-        {
-            if (gridContainer == null)
-            {
-                Debug.LogError("InventoryUI: Grid Container not assigned!");
-                return;
-            }
-            
-            if (inventorySlotPrefab == null)
-            {
-                Debug.LogError("InventoryUI: Inventory Slot Prefab not assigned!");
-                return;
-            }
-            
-            if (inventoryManager == null)
-            {
-                Debug.LogError("InventoryUI: Inventory Manager not found!");
-                return;
-            }
-            
-            int width = inventoryManager.GridWidth;
-            int height = inventoryManager.GridHeight;
-            
-            inventorySlots = new InventorySlot[width, height];
-            
-            // Set up GridLayoutGroup
-            GridLayoutGroup gridLayout = gridContainer.GetComponent<GridLayoutGroup>();
-            if (gridLayout == null)
-            {
-                gridLayout = gridContainer.gameObject.AddComponent<GridLayoutGroup>();
-            }
-            
-            gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            gridLayout.constraintCount = width;
-            gridLayout.cellSize = new Vector2(80, 80);
-            gridLayout.spacing = new Vector2(5, 5);
-            gridLayout.childAlignment = TextAnchor.UpperLeft;
-            
-            // Create slots
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    GameObject slotObj = Instantiate(inventorySlotPrefab, gridContainer);
-                    slotObj.name = $"Slot_{x}_{y}";
-                    
-                    InventorySlot slot = slotObj.GetComponent<InventorySlot>();
-                    if (slot != null)
-                    {
-                        slot.Initialize(x, y, this);
-                        inventorySlots[x, y] = slot;
-                    }
-                    else
-                    {
-                        Debug.LogError($"InventorySlot component not found on prefab at ({x}, {y})");
-                    }
-                }
-            }
-            
-            Debug.Log($"Created {width}x{height} inventory grid ({width * height} slots)");
-        }
-
-        private void OnItemAddedToGrid(CollectibleItem item, int x, int y)
-        {
-            if (inventorySlots != null && inventorySlots[x, y] != null)
-            {
-                inventorySlots[x, y].SetItem(item);
-            }
-            
-            UpdateResourceDisplay();
-        }
-
-        private void OnItemRemovedFromGrid(int x, int y)
-        {
-            if (inventorySlots != null && inventorySlots[x, y] != null)
-            {
-                inventorySlots[x, y].ClearItem();
-            }
-            
-            UpdateResourceDisplay();
-        }
-
-        private void OnResourceChanged(string resourceType, float amount)
-        {
-            UpdateResourceDisplay();
-        }
-
-        private void UpdateResourceDisplay()
-        {
-            if (inventoryManager == null) return;
-            
-            if (materialsText != null)
-            {
-                materialsText.text = $"Materials: {inventoryManager.GetResource("Materials"):F0}";
-            }
-            
-            if (techText != null)
-            {
-                techText.text = $"Tech: {inventoryManager.GetResource("Tech"):F0}";
-            }
-            
-            if (powerText != null)
-            {
-                powerText.text = $"Power: {inventoryManager.GetResource("Power"):F0}";
-            }
-        }
-
-        public void OnSlotClicked(InventorySlot slot)
-        {
-            selectedSlot = slot;
-            
-            if (slot.HasItem)
-            {
-                ShowItemInfo(slot.GetItem());
-                
-                if (actionButtonsPanel != null)
-                    actionButtonsPanel.SetActive(true);
-            }
-            else
-            {
-                HideItemInfo();
-                
-                if (actionButtonsPanel != null)
-                    actionButtonsPanel.SetActive(false);
-            }
-        }
-
-        private void ShowItemInfo(CollectibleItem item)
-        {
-            if (itemInfoPanel != null)
-                itemInfoPanel.SetActive(true);
-            
-            if (itemNameText != null)
-                itemNameText.text = item.itemName;
-            
-            if (itemDescriptionText != null)
-                itemDescriptionText.text = item.description;
-            
-            if (itemIconImage != null && item.icon != null)
-            {
-                itemIconImage.sprite = item.icon;
-                itemIconImage.enabled = true;
-            }
-            else if (itemIconImage != null)
-            {
-                itemIconImage.enabled = false;
-            }
-        }
-
-        private void HideItemInfo()
-        {
-            if (itemInfoPanel != null)
-                itemInfoPanel.SetActive(false);
-        }
-
-        private void OnConsumeButtonClicked()
-        {
-            Debug.Log("Consume button clicked!");
-            
-            if (selectedSlot != null && selectedSlot.HasItem)
-            {
-                inventoryManager.ConsumeItem(selectedSlot.GridX, selectedSlot.GridY);
-                selectedSlot = null;
-                HideItemInfo();
-                
-                if (actionButtonsPanel != null)
-                    actionButtonsPanel.SetActive(false);
-            }
-            else
-            {
-                Debug.Log("No item selected to consume");
-            }
-        }
-
-        private void OnDiscardButtonClicked()
-        {
-            Debug.Log("Discard button clicked!");
-            
-            if (selectedSlot != null && selectedSlot.HasItem)
-            {
-                inventoryManager.DiscardItem(selectedSlot.GridX, selectedSlot.GridY);
-                selectedSlot = null;
-                HideItemInfo();
-                
-                if (actionButtonsPanel != null)
-                    actionButtonsPanel.SetActive(false);
-            }
-            else
-            {
-                Debug.Log("No item selected to discard");
-            }
-        }
-
-        private void ShowTab(bool showInventory)
-        {
-            // Toggle between inventory and upgrade containers
-            if (inventoryContainer != null)
-                inventoryContainer.SetActive(showInventory);
-            
-            if (upgradeContainer != null)
-                upgradeContainer.SetActive(!showInventory);
-            
-            Debug.Log($"Showing tab: {(showInventory ? "Inventory" : "Upgrades")}");
-        }
-
-        public void OpenInventory()
-        {
-            Debug.Log("Opening inventory...");
-            
-            if (inventoryPanel != null)
-            {
-                // Show the whole panel
-                inventoryPanel.SetActive(true);
-                
-                // Make sure we're on inventory tab by default
-                ShowTab(true);
-                
-                isOpen = true;
-                
-                if (pauseGameWhenOpen)
-                {
-                    Time.timeScale = 0f;
-                }
-                
-                // Disable gameplay UI
-                if (gameplayUIGroup != null)
-                {
-                    gameplayUIGroup.alpha = 0.3f;
-                    gameplayUIGroup.interactable = false;
-                }
-                
-                // IMPORTANT: Make cursor visible and unlocked
-                Cursor.visible = true;
-                Cursor.lockState = CursorLockMode.None;
-                
-                UpdateResourceDisplay();
-                
-                Debug.Log("Inventory opened. Cursor visible: " + Cursor.visible);
-            }
-        }
-
-        public void CloseInventory()
-        {
-            Debug.Log("Closing inventory...");
-            
-            if (inventoryPanel != null)
-            {
-                // Hide the whole panel (including both containers and tabs)
-                inventoryPanel.SetActive(false);
-                
-                isOpen = false;
-                
-                if (pauseGameWhenOpen)
-                {
-                    Time.timeScale = 1f;
-                }
-                
-                // Re-enable gameplay UI
-                if (gameplayUIGroup != null)
-                {
-                    gameplayUIGroup.alpha = 1f;
-                    gameplayUIGroup.interactable = true;
-                }
-                
-                // Lock cursor back for gameplay
-                #if !UNITY_EDITOR
-                Cursor.visible = false;
-                Cursor.lockState = CursorLockMode.Locked;
-                #endif
-                
-                HideItemInfo();
-                
-                if (actionButtonsPanel != null)
-                    actionButtonsPanel.SetActive(false);
-                
-                Debug.Log("Inventory closed");
-            }
+            ClearSelection();
         }
 
         private void OnDestroy()
         {
             if (inventoryManager != null)
             {
-                inventoryManager.OnItemAddedToGrid -= OnItemAddedToGrid;
-                inventoryManager.OnItemRemovedFromGrid -= OnItemRemovedFromGrid;
-                inventoryManager.OnResourceChanged -= OnResourceChanged;
+                inventoryManager.OnSlotChanged -= HandleSlotChanged;
+                inventoryManager.OnInventoryRebuilt -= RebuildGrid;
+                inventoryManager.OnResourceChanged -= HandleResourceChanged;
+                inventoryManager.OnWeightChanged -= HandleWeightChanged;
+                inventoryManager.OnPickupRejected -= HandlePickupRejected;
                 inventoryManager.OnInventoryOpened -= OpenInventory;
                 inventoryManager.OnInventoryClosed -= CloseInventory;
             }
+
+            if (Instance == this) Instance = null;
         }
 
-        #region Debug Methods
+        #endregion
 
-        [ContextMenu("Test Button Click")]
-        private void DebugTestButton()
+        #region Grid construction
+
+        /// <summary>Destroys and recreates every slot, then repaints from the manager.</summary>
+        private void RebuildGrid()
         {
-            Debug.Log("=== BUTTON TEST ===");
-            
-            if (consumeButton != null)
+            if (gridContainer == null || inventorySlotPrefab == null || inventoryManager == null)
             {
-                Debug.Log($"Consume Button: {consumeButton.name}");
-                Debug.Log($"- Interactable: {consumeButton.interactable}");
-                Debug.Log($"- GameObject Active: {consumeButton.gameObject.activeInHierarchy}");
-                Debug.Log($"- Parent Active: {consumeButton.transform.parent.gameObject.activeInHierarchy}");
-                
-                Image img = consumeButton.GetComponent<Image>();
-                if (img != null)
+                if (gridContainer == null) Debug.LogError("InventoryUI: Grid Container not assigned.");
+                if (inventorySlotPrefab == null) Debug.LogError("InventoryUI: Inventory Slot Prefab not assigned.");
+                return;
+            }
+
+            int width = inventoryManager.GridWidth;
+            int height = inventoryManager.GridHeight;
+
+            bool sizeMatches = inventorySlots != null
+                && inventorySlots.GetLength(0) == width
+                && inventorySlots.GetLength(1) == height;
+
+            if (!sizeMatches)
+            {
+                for (int i = gridContainer.childCount - 1; i >= 0; i--)
                 {
-                    Debug.Log($"- Image Raycast Target: {img.raycastTarget}");
+                    Destroy(gridContainer.GetChild(i).gameObject);
                 }
-                else
+
+                inventorySlots = new InventorySlot[width, height];
+                ConfigureGridLayout(width);
+
+                for (int y = 0; y < height; y++)
                 {
-                    Debug.LogWarning("- No Image component found!");
+                    for (int x = 0; x < width; x++)
+                    {
+                        GameObject slotObj = Instantiate(inventorySlotPrefab, gridContainer);
+                        slotObj.name = $"Slot_{x}_{y}";
+
+                        InventorySlot slot = slotObj.GetComponent<InventorySlot>();
+                        if (slot == null)
+                        {
+                            Debug.LogError("InventoryUI: slot prefab has no InventorySlot component.");
+                            continue;
+                        }
+
+                        slot.Initialize(x, y, this);
+                        inventorySlots[x, y] = slot;
+                    }
                 }
-                
-                // Check listeners
-                var listenerCount = consumeButton.onClick.GetPersistentEventCount();
-                Debug.Log($"- Persistent Listeners: {listenerCount}");
-                
-                // Simulate click
-                Debug.Log("Attempting to invoke button click...");
-                consumeButton.onClick.Invoke();
             }
-            else
-            {
-                Debug.LogError("Consume button is NULL!");
-            }
-            
-            // Check EventSystem
-            UnityEngine.EventSystems.EventSystem es = UnityEngine.EventSystems.EventSystem.current;
-            if (es == null)
-            {
-                Debug.LogError("NO EVENT SYSTEM FOUND IN SCENE!");
-            }
-            else
-            {
-                Debug.Log($"✓ EventSystem found: {es.name}");
-                Debug.Log($"- Current Selected GameObject: {(es.currentSelectedGameObject != null ? es.currentSelectedGameObject.name : "None")}");
-                Debug.Log($"- EventSystem Enabled: {es.enabled}");
-            }
-            
-            // Check cursor
-            Debug.Log($"Cursor visible: {Cursor.visible}");
-            Debug.Log($"Cursor lock state: {Cursor.lockState}");
+
+            RefreshAllSlots();
+            ClearSelection();
+            UpdateResourceDisplay();
         }
+
+        private void ConfigureGridLayout(int columns)
+        {
+            GridLayoutGroup gridLayout = gridContainer.GetComponent<GridLayoutGroup>();
+            if (gridLayout == null) gridLayout = gridContainer.gameObject.AddComponent<GridLayoutGroup>();
+
+            gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            gridLayout.constraintCount = columns;
+            gridLayout.cellSize = slotSize;
+            gridLayout.spacing = slotSpacing;
+            gridLayout.childAlignment = TextAnchor.UpperLeft;
+        }
+
+        private void RefreshAllSlots()
+        {
+            if (inventorySlots == null || inventoryManager == null) return;
+
+            for (int y = 0; y < inventorySlots.GetLength(1); y++)
+            {
+                for (int x = 0; x < inventorySlots.GetLength(0); x++)
+                {
+                    inventorySlots[x, y]?.SetStack(inventoryManager.GetStackAt(x, y));
+                }
+            }
+        }
+
+        #endregion
+
+        #region Manager events
+
+        private void HandleSlotChanged(int x, int y)
+        {
+            if (inventorySlots == null || inventoryManager == null) return;
+            if (x < 0 || x >= inventorySlots.GetLength(0) || y < 0 || y >= inventorySlots.GetLength(1)) return;
+
+            inventorySlots[x, y]?.SetStack(inventoryManager.GetStackAt(x, y));
+
+            // The selected slot may have just been emptied by a spend elsewhere.
+            if (selectedSlot != null && selectedSlot.GridX == x && selectedSlot.GridY == y && !selectedSlot.HasItem)
+            {
+                ClearSelection();
+            }
+
+            UpdateResourceDisplay();
+        }
+
+        private void HandleResourceChanged(string resourceType, float amount) => UpdateResourceDisplay();
+
+        private void HandleWeightChanged(float current, float capacity) => UpdateResourceDisplay();
+
+        private void HandlePickupRejected(CollectibleItem item, string reason)
+        {
+            Debug.Log($"Could not pick up {item.itemName}: {reason}");
+        }
+
+        #endregion
+
+        #region Display
+
+        private void UpdateResourceDisplay()
+        {
+            if (inventoryManager == null) return;
+
+            if (materialsText != null)
+                materialsText.text = $"Materials: {inventoryManager.GetResource(ResourceIds.Materials):F0}";
+
+            if (techText != null)
+                techText.text = $"Tech: {inventoryManager.GetResource(ResourceIds.Tech):F0}";
+
+            if (powerText != null)
+                powerText.text = $"Power: {inventoryManager.GetResource(ResourceIds.Power):F0}";
+
+            if (weightText != null)
+                weightText.text = $"{inventoryManager.GetTotalWeight():F1} / {inventoryManager.CargoCapacity:F0} kg";
+
+            if (slotsText != null)
+                slotsText.text = $"{inventoryManager.UsedSlots} / {inventoryManager.TotalSlots} slots";
+        }
+
+        private void ShowItemInfo(InventorySlot slot)
+        {
+            CollectibleItem item = slot.GetItem();
+            if (item == null)
+            {
+                HideItemInfo();
+                return;
+            }
+
+            if (itemInfoPanel != null) itemInfoPanel.SetActive(true);
+            if (itemNameText != null) itemNameText.text = slot.Quantity > 1 ? $"{item.itemName} x{slot.Quantity}" : item.itemName;
+            if (itemDescriptionText != null) itemDescriptionText.text = item.description;
+
+            if (itemIconImage != null)
+            {
+                itemIconImage.sprite = item.icon;
+                itemIconImage.enabled = item.icon != null;
+            }
+
+            if (itemStatsText != null)
+            {
+                string resource = ResourceIds.Of(item);
+                float value = ResourceIds.ValueOf(item) * slot.Quantity;
+                itemStatsText.text =
+                    $"Weight: {item.weight * slot.Quantity:F1} kg\n" +
+                    $"{resource}: {value:F1}\n" +
+                    $"Stack: {slot.Quantity} / {Mathf.Max(1, item.stackSize)}";
+            }
+        }
+
+        private void HideItemInfo()
+        {
+            if (itemInfoPanel != null) itemInfoPanel.SetActive(false);
+            if (itemStatsText != null) itemStatsText.text = string.Empty;
+        }
+
+        private void ClearSelection()
+        {
+            selectedSlot?.SetHighlight(false);
+            selectedSlot = null;
+
+            HideItemInfo();
+            if (actionButtonsPanel != null) actionButtonsPanel.SetActive(false);
+        }
+
+        #endregion
+
+        #region Slot callbacks
+
+        public void OnSlotClicked(InventorySlot slot)
+        {
+            if (selectedSlot != null && selectedSlot != slot) selectedSlot.SetHighlight(false);
+
+            if (!slot.HasItem)
+            {
+                ClearSelection();
+                return;
+            }
+
+            selectedSlot = slot;
+            slot.SetHighlight(true);
+
+            ShowItemInfo(slot);
+            if (actionButtonsPanel != null) actionButtonsPanel.SetActive(true);
+        }
+
+        /// <summary>Right click splits a stack in half, or uses a single item.</summary>
+        public void OnSlotRightClicked(InventorySlot slot)
+        {
+            if (!slot.HasItem || inventoryManager == null) return;
+
+            if (slot.Quantity > 1) inventoryManager.SplitStack(slot.GridX, slot.GridY, slot.Quantity / 2);
+            else inventoryManager.ConsumeItem(slot.GridX, slot.GridY);
+        }
+
+        public void OnSlotHovered(InventorySlot slot)
+        {
+            // Only preview while nothing is pinned, so hovering does not stomp a selection.
+            if (selectedSlot == null) ShowItemInfo(slot);
+        }
+
+        public void OnSlotHoverExit(InventorySlot slot)
+        {
+            if (selectedSlot == null) HideItemInfo();
+        }
+
+        public void RequestMove(InventorySlot from, InventorySlot to)
+        {
+            if (inventoryManager == null || from == null || to == null) return;
+            inventoryManager.MoveItem(from.GridX, from.GridY, to.GridX, to.GridY);
+        }
+
+        #endregion
+
+        #region Buttons
+
+        private void OnConsumeButtonClicked()
+        {
+            if (selectedSlot == null || !selectedSlot.HasItem) return;
+
+            inventoryManager.ConsumeItem(selectedSlot.GridX, selectedSlot.GridY);
+
+            if (selectedSlot != null && selectedSlot.HasItem) ShowItemInfo(selectedSlot);
+            else ClearSelection();
+        }
+
+        private void OnDiscardButtonClicked()
+        {
+            if (selectedSlot == null || !selectedSlot.HasItem) return;
+
+            inventoryManager.DiscardItem(selectedSlot.GridX, selectedSlot.GridY);
+            ClearSelection();
+        }
+
+        private void OnSortButtonClicked()
+        {
+            inventoryManager?.CompactAndSort();
+        }
+
+        private void ShowTab(bool showInventory)
+        {
+            if (inventoryContainer != null) inventoryContainer.SetActive(showInventory);
+            if (upgradeContainer != null) upgradeContainer.SetActive(!showInventory);
+        }
+
+        #endregion
+
+        #region Open / close
+
+        public void OpenInventory()
+        {
+            if (isOpen || inventoryPanel == null) return;
+
+            isOpen = true;
+            inventoryPanel.SetActive(true);
+            ShowTab(true);
+
+            RefreshAllSlots();
+            UpdateResourceDisplay();
+            ClearSelection();
+
+            if (pauseGameWhenOpen)
+            {
+                timeScaleBeforeOpen = Time.timeScale;
+                Time.timeScale = 0f;
+            }
+
+            if (gameplayUIGroup != null)
+            {
+                gameplayUIGroup.alpha = 0.3f;
+                gameplayUIGroup.interactable = false;
+            }
+
+            cursorVisibleBeforeOpen = Cursor.visible;
+            cursorLockBeforeOpen = Cursor.lockState;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+
+        public void CloseInventory()
+        {
+            if (!isOpen || inventoryPanel == null) return;
+
+            isOpen = false;
+            inventoryPanel.SetActive(false);
+
+            // Restore rather than force to 1 - the pause menu may legitimately still be paused.
+            if (pauseGameWhenOpen) Time.timeScale = timeScaleBeforeOpen;
+
+            if (gameplayUIGroup != null)
+            {
+                gameplayUIGroup.alpha = 1f;
+                gameplayUIGroup.interactable = true;
+            }
+
+            Cursor.visible = cursorVisibleBeforeOpen;
+            Cursor.lockState = cursorLockBeforeOpen;
+
+            ClearSelection();
+
+            // Keep the manager's open flag in step when the UI closed itself.
+            inventoryManager?.CloseInventory();
+        }
+
+        /// <summary>Hook for a close button in the panel.</summary>
+        public void Close() => inventoryManager?.CloseInventory();
+
+        #endregion
+
+        #region Debug
 
         [ContextMenu("Force Open Inventory")]
-        private void DebugForceOpen()
-        {
-            OpenInventory();
-        }
+        private void DebugForceOpen() => OpenInventory();
 
         [ContextMenu("Force Close Inventory")]
-        private void DebugForceClose()
-        {
-            CloseInventory();
-        }
+        private void DebugForceClose() => CloseInventory();
 
-        [ContextMenu("Toggle Tab")]
-        private void DebugToggleTab()
-        {
-            bool showInventory = inventoryContainer != null && !inventoryContainer.activeSelf;
-            ShowTab(showInventory);
-        }
+        [ContextMenu("Rebuild Grid")]
+        private void DebugRebuild() => RebuildGrid();
 
         [ContextMenu("Print UI Status")]
         private void DebugPrintStatus()
         {
-            Debug.Log("=== INVENTORY UI STATUS ===");
-            Debug.Log($"Is Open: {isOpen}");
-            Debug.Log($"Inventory Panel (Main): {(inventoryPanel != null ? inventoryPanel.name : "NULL")}");
-            Debug.Log($"- Active: {(inventoryPanel != null ? inventoryPanel.activeSelf : false)}");
-            Debug.Log($"Inventory Container: {(inventoryContainer != null ? inventoryContainer.name : "NULL")}");
-            Debug.Log($"- Active: {(inventoryContainer != null ? inventoryContainer.activeSelf : false)}");
-            Debug.Log($"Upgrade Container: {(upgradeContainer != null ? upgradeContainer.name : "NULL")}");
-            Debug.Log($"- Active: {(upgradeContainer != null ? upgradeContainer.activeSelf : false)}");
-            Debug.Log($"Grid Container: {(gridContainer != null ? gridContainer.name : "NULL")}");
-            Debug.Log($"Slot Prefab: {(inventorySlotPrefab != null ? inventorySlotPrefab.name : "NULL")}");
-            Debug.Log($"Inventory Manager: {(inventoryManager != null ? "Found" : "NULL")}");
-            Debug.Log($"Slots Created: {(inventorySlots != null ? $"{inventorySlots.GetLength(0)}x{inventorySlots.GetLength(1)}" : "Not created")}");
-            Debug.Log($"Consume Button: {(consumeButton != null ? consumeButton.name : "NULL")}");
-            Debug.Log($"Discard Button: {(discardButton != null ? discardButton.name : "NULL")}");
-            Debug.Log($"Time Scale: {Time.timeScale}");
+            Debug.Log(
+                $"=== INVENTORY UI ===\n" +
+                $"Open: {isOpen}   TimeScale: {Time.timeScale}\n" +
+                $"Panel: {(inventoryPanel != null ? inventoryPanel.name : "NULL")}\n" +
+                $"Grid Container: {(gridContainer != null ? gridContainer.name : "NULL")}\n" +
+                $"Slot Prefab: {(inventorySlotPrefab != null ? inventorySlotPrefab.name : "NULL")}\n" +
+                $"Manager: {(inventoryManager != null ? "found" : "NULL")}\n" +
+                $"Slots: {(inventorySlots != null ? $"{inventorySlots.GetLength(0)}x{inventorySlots.GetLength(1)}" : "not built")}\n" +
+                $"EventSystem: {(UnityEngine.EventSystems.EventSystem.current != null ? "present" : "MISSING")}");
         }
 
         #endregion

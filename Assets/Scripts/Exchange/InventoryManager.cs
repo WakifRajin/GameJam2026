@@ -5,7 +5,11 @@ using System;
 namespace GameJam2026
 {
     /// <summary>
-    /// Manages the rover's inventory and collected items
+    /// DEPRECATED - superseded by GridInventoryManager.
+    ///
+    /// Kept only so old scenes still deserialize. It duplicates resource state, has no
+    /// stacking and no weight sync, and nothing in the project targets it any more.
+    /// Do not add new references; delete once no scene carries the component.
     /// </summary>
     public class InventoryManager : MonoBehaviour
     {

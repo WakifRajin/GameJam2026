@@ -55,7 +55,7 @@ public class IMUPublisher : MonoBehaviour
                 frame_id = "drone_imu",
                 stamp = new TimeMsg
                 {
-                    sec = (int)Time.time,
+                    sec = (uint)Time.time,
                     nanosec = (uint)((Time.time - (int)Time.time) * 1e9)
                 }
             },

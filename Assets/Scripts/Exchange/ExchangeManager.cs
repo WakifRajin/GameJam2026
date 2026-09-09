@@ -11,7 +11,7 @@ namespace GameJam2026
     {
         [Header("References")]
         [SerializeField] private RoverAttributeManager roverAttributes;
-        [SerializeField] private InventoryManager inventoryManager;
+        [SerializeField] private GridInventoryManager inventoryManager;
         
         [Header("Available Exchanges")]
         [SerializeField] private List<ExchangeRecipe> availableExchanges = new List<ExchangeRecipe>();
@@ -36,7 +36,9 @@ namespace GameJam2026
             
             if (inventoryManager == null)
             {
-                inventoryManager = GetComponent<InventoryManager>();
+                // The live inventory lives on the rover; fall back to a scene lookup so an
+                // ExchangeManager placed on a station still finds it.
+                inventoryManager = GetComponent<GridInventoryManager>() ?? FindObjectOfType<GridInventoryManager>();
             }
         }
 
@@ -173,10 +175,10 @@ namespace GameJam2026
                     return roverAttributes != null && roverAttributes.CurrentCommunicationRange >= amount;
                     
                 case ResourceType.Materials:
-                    return inventoryManager != null && inventoryManager.StoredMaterials >= amount;
+                    return inventoryManager != null && inventoryManager.HasResource(ResourceIds.Materials, amount);
                     
                 case ResourceType.Tech:
-                    return inventoryManager != null && inventoryManager.StoredTech >= amount;
+                    return inventoryManager != null && inventoryManager.HasResource(ResourceIds.Tech, amount);
                     
                 default:
                     return false;
@@ -204,11 +206,11 @@ namespace GameJam2026
                     break;
                     
                 case ResourceType.Materials:
-                    inventoryManager?.ConsumeResource("Materials", amount);
+                    inventoryManager?.ConsumeResource(ResourceIds.Materials, amount);
                     break;
                     
                 case ResourceType.Tech:
-                    inventoryManager?.ConsumeResource("Tech", amount);
+                    inventoryManager?.ConsumeResource(ResourceIds.Tech, amount);
                     break;
             }
         }
@@ -222,8 +224,7 @@ namespace GameJam2026
                     break;
                     
                 case ResourceType.MaxPower:
-                    // TODO: Implement max power upgrade
-                    Debug.Log($"Max Power increased by {amount}");
+                    roverAttributes?.AddMaxPower(amount);
                     break;
                     
                 case ResourceType.Speed:
@@ -239,16 +240,15 @@ namespace GameJam2026
                     break;
                     
                 case ResourceType.Materials:
-                    inventoryManager?.AddResource("Materials", amount);
+                    inventoryManager?.AddResource(ResourceIds.Materials, amount);
                     break;
                     
                 case ResourceType.Tech:
-                    inventoryManager?.AddResource("Tech", amount);
+                    inventoryManager?.AddResource(ResourceIds.Tech, amount);
                     break;
                     
                 case ResourceType.CargoCapacity:
-                    // TODO: Implement cargo capacity upgrade
-                    Debug.Log($"Cargo Capacity increased by {amount}");
+                    roverAttributes?.AddMaxCargoCapacity(amount);
                     break;
             }
         }

@@ -332,45 +332,16 @@ namespace GameJam2026
         private int GetPlayerScrapMetal()
         {
             if (gridInventoryManager == null) return 0;
-            
-            int count = 0;
-            var grid = gridInventoryManager.InventoryGrid;
-            
-            for (int y = 0; y < gridInventoryManager.GridHeight; y++)
-            {
-                for (int x = 0; x < gridInventoryManager.GridWidth; x++)
-                {
-                    var item = grid[x, y];
-                    if (item != null && item.itemType == ItemType.Material)
-                    {
-                        count++;
-                    }
-                }
-            }
-            
-            return count;
+
+            // Counts units, not occupied slots - a stack of 5 scrap is 5, not 1.
+            return gridInventoryManager.CountOfType(ItemType.Material);
         }
 
         private void ConsumeScrapMetal(int amount)
         {
             if (gridInventoryManager == null) return;
-            
-            int consumed = 0;
-            var grid = gridInventoryManager.InventoryGrid;
-            
-            for (int y = 0; y < gridInventoryManager.GridHeight && consumed < amount; y++)
-            {
-                for (int x = 0; x < gridInventoryManager.GridWidth && consumed < amount; x++)
-                {
-                    var item = grid[x, y];
-                    if (item != null && item.itemType == ItemType.Material)
-                    {
-                        gridInventoryManager.RemoveItemAt(x, y);
-                        consumed++;
-                    }
-                }
-            }
-            
+
+            int consumed = gridInventoryManager.RemoveItemsOfType(ItemType.Material, amount);
             Debug.Log($"[SignalTower] Consumed {consumed} scrap metal");
         }
 

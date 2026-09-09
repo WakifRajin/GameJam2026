@@ -13,7 +13,7 @@ namespace GameJam2026
         [Header("References")]
         [SerializeField] private ExchangeManager exchangeManager;
         [SerializeField] private RoverAttributeManager roverAttributes;
-        [SerializeField] private InventoryManager inventoryManager;
+        [SerializeField] private GridInventoryManager inventoryManager;
         
         [Header("UI Panels")]
         [SerializeField] private GameObject exchangePanel;

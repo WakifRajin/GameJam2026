@@ -178,7 +178,7 @@ namespace GameJam2026
             
             if (gridInventoryManager != null)
             {
-                gridInventoryManager.OnItemAddedToGrid += HandleItemCollected;
+                gridInventoryManager.OnItemCollected += HandleItemCollected;
                 gridInventoryManager.OnResourceChanged += HandleResourceChanged;
                 DebugLog("✓ Subscribed to GridInventoryManager events");
             }
@@ -213,7 +213,7 @@ namespace GameJam2026
             
             if (gridInventoryManager != null)
             {
-                gridInventoryManager.OnItemAddedToGrid -= HandleItemCollected;
+                gridInventoryManager.OnItemCollected -= HandleItemCollected;
                 gridInventoryManager.OnResourceChanged -= HandleResourceChanged;
             }
             
@@ -226,7 +226,7 @@ namespace GameJam2026
 
         #region Event Handlers
 
-        private void HandleItemCollected(CollectibleItem item, int x, int y)
+        private void HandleItemCollected(CollectibleItem item, int quantity)
         {
             if (item == null) return;
             
@@ -244,7 +244,7 @@ namespace GameJam2026
             {
                 collectedItemCounts[itemTypeKey] = 0;
             }
-            collectedItemCounts[itemTypeKey]++;
+            collectedItemCounts[itemTypeKey] += quantity;
             
             // Track by resource type if available
             string resourceKey = GetResourceTypeFromItem(item);
@@ -254,7 +254,7 @@ namespace GameJam2026
                 {
                     collectedItemCounts[resourceKey] = 0;
                 }
-                collectedItemCounts[resourceKey]++;
+                collectedItemCounts[resourceKey] += quantity;
             }
             
             DebugLog($"Tracked: {itemTypeKey} count = {collectedItemCounts[itemTypeKey]}");
@@ -375,21 +375,22 @@ namespace GameJam2026
             
             if (!string.IsNullOrEmpty(objective.targetResourceType))
             {
-                // Check collected items count
-                if (collectedItemCounts.ContainsKey(objective.targetResourceType))
+                // Objectives may name an item type ("Material") or a resource ("Materials"),
+                // so try the literal key before falling back to the canonical one.
+                string canonical = ResourceIds.Normalize(objective.targetResourceType);
+
+                if (collectedItemCounts.TryGetValue(objective.targetResourceType, out int count) ||
+                    collectedItemCounts.TryGetValue(canonical, out count))
                 {
-                    int count = collectedItemCounts[objective.targetResourceType];
                     tracker.UpdateProgress(count);
                     DebugLog($"Objective '{objective.objectiveTitle}': {count}/{objective.targetValue}");
                 }
-                else
+                else if (gridInventoryManager != null)
                 {
-                    // Check resources in inventory
-                    if (gridInventoryManager != null)
-                    {
-                        float resourceAmount = gridInventoryManager.GetResource(objective.targetResourceType);
-                        tracker.UpdateProgress(resourceAmount);
-                    }
+                    // Units, not resource worth: one 15-power cell is 1 towards "collect 5
+                    // power cells", not 15. Lifetime, so spending on an upgrade cannot
+                    // un-complete an objective.
+                    tracker.UpdateProgress(gridInventoryManager.GetLifetimeUnits(canonical));
                 }
             }
             else
@@ -443,19 +444,9 @@ namespace GameJam2026
 
         private string GetResourceTypeFromItem(CollectibleItem item)
         {
-            // Try to get resourceType via reflection
-            var field = item.GetType().GetField("resourceType");
-            if (field != null)
-            {
-                string value = field.GetValue(item) as string;
-                if (!string.IsNullOrEmpty(value))
-                {
-                    return value;
-                }
-            }
-            
-            // Fallback to itemType
-            return item.itemType.ToString();
+            // Canonical key, so an objective spelled "Materials" matches an item that calls
+            // itself "Material". ResourceIds owns every alias.
+            return ResourceIds.Of(item);
         }
 
         #endregion
