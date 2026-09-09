@@ -687,6 +687,35 @@ namespace GameJam2026
 
         public bool HasItem(CollectibleItem item, int quantity = 1) => CountOf(item) >= quantity;
 
+        /// <summary>
+        /// Units currently held that count towards a category, for live objective tracking.
+        ///
+        /// Accepts either an ItemType name ("PowerCell", "Material") or a resource key
+        /// ("Power", "Materials"); an ItemType is matched exactly, anything else falls back to
+        /// the canonical resource so related types are pooled together.
+        /// Unlike GetResource this counts ITEMS, and unlike GetLifetimeUnits it drops when
+        /// items are spent.
+        /// </summary>
+        public int CountUnitsOfCategory(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category)) return 0;
+
+            if (Enum.TryParse(category.Trim(), true, out ItemType itemType) &&
+                Enum.IsDefined(typeof(ItemType), itemType))
+            {
+                return CountOfType(itemType);
+            }
+
+            string key = ResourceIds.Normalize(category);
+            int count = 0;
+            for (int i = 0; i < Slots.Length; i++)
+            {
+                if (Slots[i].IsEmpty) continue;
+                if (ResourceIds.Of(Slots[i].item) == key) count += Slots[i].quantity;
+            }
+            return count;
+        }
+
         /// <summary>Every distinct item held, with its total unit count.</summary>
         public Dictionary<CollectibleItem, int> GetContents()
         {

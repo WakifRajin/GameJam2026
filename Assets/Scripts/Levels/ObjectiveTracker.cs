@@ -16,17 +16,23 @@ namespace GameJam2026
         
         public event Action<ObjectiveTracker> OnProgressChanged;
         public event Action<ObjectiveTracker> OnCompleted;
-        
+        /// <summary>Fired when a live-tracked objective falls back below its target.</summary>
+        public event Action<ObjectiveTracker> OnUncompleted;
+
         public float ProgressPercentage => objective != null ? Mathf.Clamp01(currentProgress / objective.targetValue) : 0f;
-        
+
+        /// <summary>
+        /// Latching update: ignored once the objective is complete. Correct for one-way
+        /// milestones (activating the tower, surviving N seconds).
+        /// </summary>
         public void UpdateProgress(float newProgress)
         {
-            if (isCompleted) 
+            if (isCompleted)
             {
                 Debug.LogWarning($"[ObjectiveTracker] UpdateProgress called on already completed objective: {objective?.objectiveTitle}");
                 return;
             }
-            
+
             // LOG EVERY PROGRESS UPDATE with stack trace
             if (objective.objectiveType == ObjectiveType.ActivateObject || 
                 objective.objectiveType == ObjectiveType.RepairObject)
@@ -55,6 +61,33 @@ namespace GameJam2026
         public void AddProgress(float amount)
         {
             UpdateProgress(currentProgress + amount);
+        }
+
+        /// <summary>
+        /// Live update: progress mirrors a value that can go down again, so the objective
+        /// un-completes if it drops back below target. Used by "collect N items" objectives,
+        /// which track what is actually in the hold rather than what was ever picked up.
+        /// </summary>
+        public void SetLiveProgress(float newProgress)
+        {
+            bool changed = !Mathf.Approximately(currentProgress, newProgress);
+            currentProgress = newProgress;
+
+            if (changed) OnProgressChanged?.Invoke(this);
+
+            bool shouldBeComplete = currentProgress >= objective.targetValue;
+
+            if (shouldBeComplete && !isCompleted)
+            {
+                CompleteObjective();
+            }
+            else if (!shouldBeComplete && isCompleted)
+            {
+                isCompleted = false;
+                Debug.Log($"[ObjectiveTracker] Un-completed (stock fell): {objective?.objectiveTitle} " +
+                          $"{currentProgress}/{objective?.targetValue}");
+                OnUncompleted?.Invoke(this);
+            }
         }
         
         private void CompleteObjective()

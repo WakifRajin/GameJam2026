@@ -360,8 +360,9 @@ namespace GameJam2026
         {
             foreach (var tracker in objectiveTrackers)
             {
-                if (tracker.isCompleted) continue;
-                
+                // Deliberately NOT skipping completed trackers: collection objectives mirror
+                // what is in the hold, so a completed one must be able to fall back again
+                // when the player spends or consumes the items.
                 if (tracker.objective.objectiveType == ObjectiveType.CollectItems)
                 {
                     UpdateCollectItemsObjective(tracker);
@@ -373,34 +374,17 @@ namespace GameJam2026
         {
             var objective = tracker.objective;
             
-            if (!string.IsNullOrEmpty(objective.targetResourceType))
-            {
-                // Objectives may name an item type ("Material") or a resource ("Materials"),
-                // so try the literal key before falling back to the canonical one.
-                string canonical = ResourceIds.Normalize(objective.targetResourceType);
+            if (gridInventoryManager == null) return;
 
-                if (collectedItemCounts.TryGetValue(objective.targetResourceType, out int count) ||
-                    collectedItemCounts.TryGetValue(canonical, out count))
-                {
-                    tracker.UpdateProgress(count);
-                    DebugLog($"Objective '{objective.objectiveTitle}': {count}/{objective.targetValue}");
-                }
-                else if (gridInventoryManager != null)
-                {
-                    // Units, not resource worth: one 15-power cell is 1 towards "collect 5
-                    // power cells", not 15. Lifetime, so spending on an upgrade cannot
-                    // un-complete an objective.
-                    tracker.UpdateProgress(gridInventoryManager.GetLifetimeUnits(canonical));
-                }
-            }
-            else
-            {
-                // Count all items
-                if (gridInventoryManager != null)
-                {
-                    tracker.UpdateProgress(gridInventoryManager.UsedSlots);
-                }
-            }
+            // Live count of what is actually in the hold. Units, not resource worth - one
+            // 15-power cell is 1 towards "collect 5 power cells", not 15 - and it drops
+            // again when the player consumes items or spends them on an upgrade.
+            int held = string.IsNullOrEmpty(objective.targetResourceType)
+                ? gridInventoryManager.TotalItemCount
+                : gridInventoryManager.CountUnitsOfCategory(objective.targetResourceType);
+
+            tracker.SetLiveProgress(held);
+            DebugLog($"Objective '{objective.objectiveTitle}': {held}/{objective.targetValue}");
         }
 
         private void UpdateSurvivalObjective(ObjectiveTracker tracker)
