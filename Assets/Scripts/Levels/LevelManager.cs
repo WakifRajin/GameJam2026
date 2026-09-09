@@ -30,6 +30,8 @@ namespace GameJam2026
         [SerializeField] private GridInventoryManager gridInventoryManager;
         [SerializeField] private DayNightCycle dayNightCycle;
         [SerializeField] private SignalTower signalTower;
+        [Tooltip("Optional. Set for multi-relay levels; tower objectives then count relays online.")]
+        [SerializeField] private RelayNetwork relayNetwork;
         
         [Header("Win/Lose Conditions")]
         [SerializeField] private bool failOnPowerDepletion = false;
@@ -63,6 +65,12 @@ namespace GameJam2026
         public List<ObjectiveTracker> Objectives => objectiveTrackers;
         public string LevelName => levelName;
         public string LevelDescription => levelDescription;
+        public int LevelNumber => levelNumber;
+
+        /// <summary>True when a further scene exists in Build Settings after this one.</summary>
+        public bool HasNextLevel =>
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex + 1
+                < UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings;
 
         private void Start()
         {
@@ -79,6 +87,9 @@ namespace GameJam2026
             
             if (gridInventoryManager == null)
                 gridInventoryManager = FindObjectOfType<GridInventoryManager>();
+
+            if (relayNetwork == null)
+                relayNetwork = FindObjectOfType<RelayNetwork>();
             
             if (dayNightCycle == null)
                 dayNightCycle = FindObjectOfType<DayNightCycle>();
@@ -109,9 +120,10 @@ namespace GameJam2026
                 
                 var tracker = new ObjectiveTracker { objective = objective };
                 
-                // Add progress tracking for tower objectives
-                if (objective.objectiveType == ObjectiveType.ActivateObject || 
-                    objective.objectiveType == ObjectiveType.RepairObject)
+                // Stack-trace tracing for tower objectives, off unless explicitly enabled.
+                if (ObjectiveTracker.VerboseTowerLogging &&
+                    (objective.objectiveType == ObjectiveType.ActivateObject ||
+                     objective.objectiveType == ObjectiveType.RepairObject))
                 {
                     tracker.OnProgressChanged += (t) => 
                     {
@@ -187,7 +199,13 @@ namespace GameJam2026
                 Debug.LogError("LevelManager: GridInventoryManager not found!");
             }
             
-            if (signalTower != null)
+            if (relayNetwork != null)
+            {
+                // Multi-relay level: every relay coming online advances the same objective.
+                relayNetwork.OnRelayActivated += HandleRelayActivated;
+                DebugLog($"✓ Subscribed to RelayNetwork ({relayNetwork.TotalRelays} relays)");
+            }
+            else if (signalTower != null)
             {
                 signalTower.OnTowerActivated += HandleTowerActivated;
                 signalTower.OnTowerRepaired += HandleTowerRepaired;
@@ -195,7 +213,7 @@ namespace GameJam2026
             }
             else
             {
-                Debug.LogError("LevelManager: SignalTower not found!");
+                Debug.LogError("LevelManager: no SignalTower or RelayNetwork found!");
             }
         }
 
@@ -221,6 +239,11 @@ namespace GameJam2026
             {
                 signalTower.OnTowerActivated -= HandleTowerActivated;
                 signalTower.OnTowerRepaired -= HandleTowerRepaired;
+            }
+
+            if (relayNetwork != null)
+            {
+                relayNetwork.OnRelayActivated -= HandleRelayActivated;
             }
         }
 
@@ -286,35 +309,45 @@ namespace GameJam2026
         private void HandleTowerActivated()
         {
             Debug.Log("=== TOWER ACTIVATED EVENT RECEIVED ===");
-            
-            if (signalTower != null)
-            {
-                Debug.Log($"Tower state: {signalTower.CurrentState}");
-                Debug.Log($"Is fully activated: {signalTower.IsFullyActivated}");
-            }
-            
-            // Complete ALL tower-related objectives (no target object check since we can't assign scene objects)
+            UpdateTowerObjectives();
+        }
+
+        private void HandleRelayActivated(SignalTower relay, int index)
+        {
+            Debug.Log($"=== RELAY ONLINE: {relay.RelayName} ({relayNetwork.ActivatedCount}/{relayNetwork.TotalRelays}) ===");
+            UpdateTowerObjectives();
+        }
+
+        /// <summary>
+        /// Advances tower objectives. With a RelayNetwork the progress is the number of relays
+        /// online, so one objective can track a whole chain; without one it falls back to the
+        /// original single-tower all-or-nothing behaviour.
+        /// </summary>
+        private void UpdateTowerObjectives()
+        {
+            int relaysOnline = relayNetwork != null ? relayNetwork.ActivatedCount : 0;
+
             foreach (var tracker in objectiveTrackers)
             {
                 if (tracker.isCompleted) continue;
-                
+
                 var objective = tracker.objective;
-                
-                // Check if this objective is about activating/repairing tower
-                if (objective.objectiveType == ObjectiveType.ActivateObject ||
-                    objective.objectiveType == ObjectiveType.RepairObject)
+                if (objective.objectiveType != ObjectiveType.ActivateObject &&
+                    objective.objectiveType != ObjectiveType.RepairObject) continue;
+
+                if (relayNetwork != null)
                 {
-                    // Since there's only ONE tower in the level, complete any tower objective
-                    if (signalTower != null && signalTower.IsFullyActivated)
-                    {
-                        Debug.Log($"[LevelManager] ✓ Completing tower objective: {objective.objectiveTitle}");
-                        tracker.UpdateProgress(objective.targetValue);
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[LevelManager] Tower objective NOT completed - tower not fully activated!");
-                        Debug.LogWarning($"Tower state: {(signalTower != null ? signalTower.CurrentState.ToString() : "NULL")}");
-                    }
+                    Debug.Log($"[LevelManager] Relay objective '{objective.objectiveTitle}': {relaysOnline}/{objective.targetValue}");
+                    tracker.UpdateProgress(relaysOnline);
+                }
+                else if (signalTower != null && signalTower.IsFullyActivated)
+                {
+                    Debug.Log($"[LevelManager] ✓ Completing tower objective: {objective.objectiveTitle}");
+                    tracker.UpdateProgress(objective.targetValue);
+                }
+                else
+                {
+                    Debug.LogWarning($"[LevelManager] Tower objective NOT completed - tower not fully activated!");
                 }
             }
         }
@@ -346,11 +379,12 @@ namespace GameJam2026
                         UpdateReachLocationObjective(tracker);
                         break;
                         
-                    // CRITICAL: DO NOT UPDATE TOWER OBJECTIVES HERE
-                    // Tower objectives are ONLY updated via HandleTowerActivated event
+                    // Single-tower levels stay event-driven: the old polling path completed
+                    // the objective spuriously. A RelayNetwork reports a real count, so it is
+                    // safe to poll - and self-correcting if an activation event is ever missed.
                     case ObjectiveType.RepairObject:
                     case ObjectiveType.ActivateObject:
-                        // BLOCKED - these are event-driven only
+                        if (relayNetwork != null) UpdateTowerObjectives();
                         break;
                 }
             }

@@ -11,9 +11,23 @@ namespace GameJam2026
     /// </summary>
     public class SignalTower : MonoBehaviour
     {
+        [Header("Identity")]
+        [Tooltip("Shown on the relay HUD, e.g. \"Relay Alpha\".")]
+        [SerializeField] private string relayName = "Signal Tower";
+
         [Header("Requirements")]
         [SerializeField] private int scrapMetalRequired = 5;
         [SerializeField] private float powerRequired = 50f;
+        [Tooltip("Optional. This tower stays locked until the named tower is fully active.")]
+        [SerializeField] private SignalTower prerequisiteTower;
+
+        [Header("Activation Rewards")]
+        [Tooltip("Permanent comm range granted when this tower goes online.")]
+        [SerializeField] private float commRangeReward = 0f;
+        [Tooltip("Permanent max power granted (and immediately topped up) when this goes online.")]
+        [SerializeField] private float maxPowerReward = 0f;
+        [Tooltip("Permanent cargo capacity granted when this goes online.")]
+        [SerializeField] private float cargoCapacityReward = 0f;
         
         [Header("References")]
         [SerializeField] private GridInventoryManager gridInventoryManager;
@@ -61,6 +75,29 @@ namespace GameJam2026
         public float DistanceToPlayer => distanceToPlayer;
         public int ScrapMetalRequired => scrapMetalRequired;
         public float PowerRequired => powerRequired;
+        public string RelayName => string.IsNullOrWhiteSpace(relayName) ? name : relayName;
+        public SignalTower PrerequisiteTower => prerequisiteTower;
+        public Light TowerLight => towerLight;
+
+        /// <summary>True while an earlier relay in the chain is still offline.</summary>
+        public bool IsLocked => prerequisiteTower != null && !prerequisiteTower.IsFullyActivated;
+
+        /// <summary>What the rover still needs to take the next step here, for HUD display.</summary>
+        public string GetRequirementSummary()
+        {
+            if (IsLocked) return $"Locked - bring {prerequisiteTower.RelayName} online first";
+
+            switch (_currentState)
+            {
+                case TowerState.Broken:
+                    return $"{scrapMetalRequired} scrap ({GetPlayerScrapMetal()} held)";
+                case TowerState.Repaired:
+                    float have = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
+                    return $"{powerRequired:F0} power ({have:F0} held)";
+                default:
+                    return "Online";
+            }
+        }
 
         private void Awake()
         {
@@ -161,7 +198,13 @@ namespace GameJam2026
         private void UpdatePrompt()
         {
             if (!playerInRange || promptText == null) return;
-            
+
+            if (IsLocked)
+            {
+                promptText.text = $"{RelayName} - LOCKED\nBring {prerequisiteTower.RelayName} online first";
+                return;
+            }
+
             switch (_currentState)
             {
                 case TowerState.Broken:
@@ -187,6 +230,12 @@ namespace GameJam2026
         private void AttemptInteraction()
         {
             Debug.Log($"[SignalTower] === INTERACTION ATTEMPT === State: {_currentState}");
+
+            if (IsLocked)
+            {
+                Debug.Log($"[SignalTower] {RelayName} is locked - {prerequisiteTower.RelayName} must be online first.");
+                return;
+            }
             
             switch (_currentState)
             {
@@ -291,21 +340,73 @@ namespace GameJam2026
             
             if (interactionPromptUI != null)
                 interactionPromptUI.SetActive(false);
-            
+
+            GrantActivationRewards();
+
             OnTowerActivated?.Invoke();
             
             Debug.Log("[SignalTower] ✓✓✓ TOWER ACTIVATED! Distress signal sent! ✓✓✓");
         }
 
+        /// <summary>
+        /// Toggles a state model, refusing to touch a prefab ASSET.
+        ///
+        /// These slots are meant to hold scene children. If one is wired to the prefab in the
+        /// Project window instead, SetActive edits the asset on disk - the file then shows up
+        /// dirty in source control after every play session. Guarding here rather than trusting
+        /// the wiring, since dragging the wrong object in is an easy mistake to repeat.
+        /// </summary>
+        private void SetModelActive(GameObject model, bool active)
+        {
+            if (model == null) return;
+
+#if UNITY_EDITOR
+            if (UnityEditor.EditorUtility.IsPersistent(model))
+            {
+                Debug.LogWarning(
+                    $"[SignalTower] {RelayName}: '{model.name}' is a prefab asset, not a scene object. " +
+                    "Ignoring so the asset file is not modified - assign the scene child instead.");
+                return;
+            }
+#endif
+
+            model.SetActive(active);
+        }
+
+        /// <summary>
+        /// Permanent upgrades for bringing this relay online. This is the level's reward
+        /// curve: each relay makes the rover meaningfully more capable, so the run gets
+        /// easier exactly as the distances get longer.
+        /// </summary>
+        private void GrantActivationRewards()
+        {
+            if (roverAttributes == null) return;
+
+            if (commRangeReward > 0f)
+            {
+                roverAttributes.AddMaxCommunicationRange(commRangeReward);
+                Debug.Log($"[SignalTower] {RelayName} reward: +{commRangeReward} comm range");
+            }
+
+            if (maxPowerReward > 0f)
+            {
+                roverAttributes.AddMaxPower(maxPowerReward);
+                Debug.Log($"[SignalTower] {RelayName} reward: +{maxPowerReward} max power (and refilled)");
+            }
+
+            if (cargoCapacityReward > 0f)
+            {
+                roverAttributes.AddMaxCargoCapacity(cargoCapacityReward);
+                Debug.Log($"[SignalTower] {RelayName} reward: +{cargoCapacityReward} cargo capacity");
+            }
+        }
+
         private void UpdateVisualState()
         {
-            if (brokenModel != null) 
-                brokenModel.SetActive(_currentState == TowerState.Broken);
-            if (repairedModel != null) 
-                repairedModel.SetActive(_currentState == TowerState.Repaired);
-            if (activeModel != null) 
-                activeModel.SetActive(_currentState == TowerState.Active);
-            
+            SetModelActive(brokenModel, _currentState == TowerState.Broken);
+            SetModelActive(repairedModel, _currentState == TowerState.Repaired);
+            SetModelActive(activeModel, _currentState == TowerState.Active);
+
             if (towerLight != null)
             {
                 switch (_currentState)

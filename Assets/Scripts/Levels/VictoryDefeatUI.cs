@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace GameJam2026
 {
@@ -16,6 +17,13 @@ namespace GameJam2026
         [SerializeField] private Animator victoryAnimator;
         [SerializeField] private Animator defeatAnimator;
         
+        [Header("Buttons")]
+        [Tooltip("These were never connected in the Inspector, so the end-of-level panels were dead. Wired in Start now.")]
+        [SerializeField] private Button victoryRestartButton;
+        [SerializeField] private Button victoryNextLevelButton;
+        [SerializeField] private Button defeatRestartButton;
+        [SerializeField] private Button defeatMainMenuButton;
+
         [Header("Settings")]
         [SerializeField] private string victoryTrigger = "Show";
         [SerializeField] private string defeatTrigger = "Show";
@@ -51,6 +59,8 @@ namespace GameJam2026
             if (defeatPanel != null)
                 defeatPanel.SetActive(false);
             
+            WireButtons();
+
             // Subscribe to events
             if (levelManager != null)
             {
@@ -90,6 +100,40 @@ namespace GameJam2026
                 if (defeatAnimator != null && !string.IsNullOrEmpty(defeatTrigger))
                 {
                     defeatAnimator.SetTrigger(defeatTrigger);
+                }
+            }
+        }
+
+        private void WireButtons()
+        {
+            if (victoryRestartButton != null)
+            {
+                victoryRestartButton.onClick.RemoveListener(OnRestartClicked);
+                victoryRestartButton.onClick.AddListener(OnRestartClicked);
+            }
+
+            if (defeatRestartButton != null)
+            {
+                defeatRestartButton.onClick.RemoveListener(OnRestartClicked);
+                defeatRestartButton.onClick.AddListener(OnRestartClicked);
+            }
+
+            if (defeatMainMenuButton != null)
+            {
+                defeatMainMenuButton.onClick.RemoveListener(OnMainMenuClicked);
+                defeatMainMenuButton.onClick.AddListener(OnMainMenuClicked);
+            }
+
+            if (victoryNextLevelButton != null)
+            {
+                // Nothing to advance to on the final level - hide rather than offer a dead end.
+                bool hasNext = levelManager != null && levelManager.HasNextLevel;
+                victoryNextLevelButton.gameObject.SetActive(hasNext);
+
+                if (hasNext)
+                {
+                    victoryNextLevelButton.onClick.RemoveListener(OnNextLevelClicked);
+                    victoryNextLevelButton.onClick.AddListener(OnNextLevelClicked);
                 }
             }
         }

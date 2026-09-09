@@ -9,6 +9,13 @@ namespace GameJam2026
     [System.Serializable]
     public class ObjectiveTracker
     {
+        /// <summary>
+        /// Turns on the very loud tower-objective tracing (with stack traces) that was added
+        /// while chasing the Level 1 completion bug. Off by default: a multi-relay level fires
+        /// it once per relay and buries the console.
+        /// </summary>
+        public static bool VerboseTowerLogging = false;
+
         public GameObjective objective;
         public float currentProgress = 0f;
         public bool isCompleted = false;
@@ -34,8 +41,9 @@ namespace GameJam2026
             }
 
             // LOG EVERY PROGRESS UPDATE with stack trace
-            if (objective.objectiveType == ObjectiveType.ActivateObject || 
-                objective.objectiveType == ObjectiveType.RepairObject)
+            if (VerboseTowerLogging &&
+                (objective.objectiveType == ObjectiveType.ActivateObject ||
+                 objective.objectiveType == ObjectiveType.RepairObject))
             {
                 Debug.LogWarning($"=== TOWER OBJECTIVE PROGRESS UPDATE ===");
                 Debug.LogWarning($"Objective: {objective.objectiveTitle}");
@@ -48,10 +56,15 @@ namespace GameJam2026
             
             float oldProgress = currentProgress;
             currentProgress = newProgress;
-            OnProgressChanged?.Invoke(this);
-            
-            Debug.Log($"[ObjectiveTracker] {objective?.objectiveTitle}: {oldProgress} -> {currentProgress}/{objective?.targetValue}");
-            
+
+            // Only announce real changes. Tower objectives are polled every frame now, and
+            // firing this unconditionally spammed listeners (and the log) once per frame.
+            if (!Mathf.Approximately(oldProgress, currentProgress))
+            {
+                OnProgressChanged?.Invoke(this);
+                Debug.Log($"[ObjectiveTracker] {objective?.objectiveTitle}: {oldProgress} -> {currentProgress}/{objective?.targetValue}");
+            }
+
             if (currentProgress >= objective.targetValue)
             {
                 CompleteObjective();
@@ -101,8 +114,9 @@ namespace GameJam2026
             isCompleted = true;
             
             // EXTRA LOGGING FOR TOWER OBJECTIVES
-            if (objective.objectiveType == ObjectiveType.ActivateObject || 
-                objective.objectiveType == ObjectiveType.RepairObject)
+            if (VerboseTowerLogging &&
+                (objective.objectiveType == ObjectiveType.ActivateObject ||
+                 objective.objectiveType == ObjectiveType.RepairObject))
             {
                 Debug.LogError($"=== TOWER OBJECTIVE COMPLETED ===");
                 Debug.LogError($"Objective: {objective.objectiveTitle}");

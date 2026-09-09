@@ -64,7 +64,16 @@ namespace GameJam2026
                 restartButton.onClick.AddListener(() => levelManager?.RestartLevel());
             
             if (nextLevelButton != null)
+            {
                 nextLevelButton.onClick.AddListener(() => levelManager?.LoadNextLevel());
+
+                // LoadNextLevel silently does nothing past the last scene, so hide the button
+                // instead of offering a dead end.
+                if (levelManager != null && !levelManager.HasNextLevel)
+                {
+                    nextLevelButton.gameObject.SetActive(false);
+                }
+            }
         }
 
         private void SubscribeToEvents()
@@ -85,15 +94,21 @@ namespace GameJam2026
 
         private void DisplayLevelInfo()
         {
-            // This would need to be added to LevelManager to expose these values
+            // Read from LevelManager rather than hardcoding - this used to say
+            // "Level 1: Distress Signal" in every level, including Level 2.
+            if (levelManager == null) return;
+
             if (levelTitleText != null)
             {
-                levelTitleText.text = "Level 1: Distress Signal"; // You can get this from LevelManager
+                string name = levelManager.LevelName;
+                levelTitleText.text = string.IsNullOrWhiteSpace(name)
+                    ? $"Level {levelManager.LevelNumber}"
+                    : name;
             }
-            
+
             if (levelDescriptionText != null)
             {
-                levelDescriptionText.text = "Restore power and send a signal before nightfall";
+                levelDescriptionText.text = levelManager.LevelDescription;
             }
         }
 

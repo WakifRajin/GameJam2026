@@ -306,6 +306,28 @@ namespace GameJam2026
             pauseTime = paused;
         }
 
+        public float DayDuration => dayDurationInSeconds;
+        public float SunriseTime => sunriseTime;
+        public float SunsetTime => sunsetTime;
+
+        /// <summary>
+        /// Real seconds until day flips to night or back. <paramref name="nightIsComing"/> is
+        /// true when the pending transition is sunset.
+        ///
+        /// Drives the "can I reach the next relay before dark?" readout: solar only recharges
+        /// in daylight, so this countdown is the level's core pressure.
+        /// </summary>
+        public float SecondsUntilTransition(out bool nightIsComing)
+        {
+            nightIsComing = IsDaytime();
+
+            float boundary = nightIsComing ? sunsetTime : sunriseTime;
+            float remaining = boundary - currentTime;
+            if (remaining < 0f) remaining += 1f; // wrap past midnight
+
+            return remaining * dayDurationInSeconds;
+        }
+
         /// <summary>
         /// Set the speed of the day/night cycle
         /// </summary>
