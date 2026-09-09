@@ -35,6 +35,9 @@ namespace GameJam2026
         [SerializeField] private Button nextLevelButton;
         
         private Dictionary<ObjectiveTracker, GameObject> objectiveUIElements = new Dictionary<ObjectiveTracker, GameObject>();
+        // Prefab's own progress colour, so an objective that falls back below target can be
+        // restored to its normal look instead of being stuck green.
+        private Dictionary<ObjectiveTracker, Color> objectiveBaseColors = new Dictionary<ObjectiveTracker, Color>();
         private float totalTime = 300f;
 
         private void Start()
@@ -161,9 +164,11 @@ namespace GameJam2026
             }
             
             objectiveUIElements[tracker] = objUI;
-            
+            if (progressText != null) objectiveBaseColors[tracker] = progressText.color;
+
             // Subscribe to progress changes
             tracker.OnProgressChanged += (t) => UpdateObjectiveUI(t);
+            tracker.OnUncompleted += (t) => UpdateObjectiveUI(t);
         }
 
         private void UpdateObjectiveUI(ObjectiveTracker tracker)
@@ -185,16 +190,16 @@ namespace GameJam2026
             if (progressText != null)
             {
                 progressText.text = $"{tracker.currentProgress:F0}/{tracker.objective.targetValue:F0}";
-                Debug.Log($"Updated progress: {tracker.currentProgress:F0}/{tracker.objective.targetValue:F0}");
+
+                // Drive the colour from state in BOTH directions - a collection objective can
+                // fall back below target when the player spends what they gathered.
+                Color baseColor = objectiveBaseColors.TryGetValue(tracker, out Color c) ? c : Color.white;
+                progressText.color = tracker.isCompleted ? Color.green : baseColor;
             }
-            
-            if (checkmark != null && tracker.isCompleted)
+
+            if (checkmark != null)
             {
-                checkmark.SetActive(true);
-                if (progressText != null)
-                {
-                    progressText.color = Color.green;
-                }
+                checkmark.SetActive(tracker.isCompleted);
             }
         }
 
