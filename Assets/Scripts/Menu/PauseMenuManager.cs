@@ -205,8 +205,11 @@ namespace GameJam2026
                 pauseMenuAnimator.SetTrigger(hideTrigger);
                 StartCoroutine(ResumeAfterAnimation());
             }
-            else if (!useAnimations && canvasGroup != null)
+            else if (canvasGroup != null)
             {
+                // Fall back to the fade whenever no animator is wired, rather than snapping.
+                // This used to require useAnimations to be OFF, so a missing animator meant
+                // every exit cut instantly.
                 StartCoroutine(FadeOutAndResume());
             }
             else
@@ -277,30 +280,94 @@ namespace GameJam2026
         public void OnMainMenu()
         {
             PlayButtonSound();
+            if (isAnimating) return;
+
             Debug.Log("Returning to main menu");
-            
-            // Unpause before loading
-            Time.timeScale = 1f;
-            isPaused = false;
-            
-            // Load main menu
-            if (useSceneName)
-            {
-                SceneManager.LoadScene(mainMenuSceneName);
-            }
-            else
-            {
-                SceneManager.LoadScene(mainMenuBuildIndex);
-            }
+            StartExitTransition(LoadMainMenuNow);
         }
 
         public void OnQuit()
         {
             PlayButtonSound();
+            if (isAnimating) return;
+
             Debug.Log("Quitting game from pause menu");
-            
+            StartExitTransition(QuitNow);
+        }
+
+        /// <summary>
+        /// Runs the same hide animation Resume uses before leaving the scene.
+        ///
+        /// Main Menu and Quit used to act on the same frame as the click, so they snapped away
+        /// while Resume faded - and the button click sound was cut off before it could play.
+        /// </summary>
+        private void StartExitTransition(System.Action onComplete)
+        {
+            // Restore time first: the coroutine uses unscaled time, but anything else that
+            // reacts to leaving (audio, animators) expects a running clock.
             Time.timeScale = 1f;
-            
+            isPaused = false;
+
+            if (useAnimations && pauseMenuAnimator != null && !string.IsNullOrEmpty(hideTrigger))
+            {
+                pauseMenuAnimator.SetTrigger(hideTrigger);
+                StartCoroutine(RunAfterDelay(onComplete));
+            }
+            else if (canvasGroup != null)
+            {
+                StartCoroutine(FadeOutThen(onComplete));
+            }
+            else
+            {
+                // No visuals to animate, but still hold briefly so the click is audible.
+                StartCoroutine(RunAfterDelay(onComplete));
+            }
+        }
+
+        private IEnumerator RunAfterDelay(System.Action onComplete)
+        {
+            isAnimating = true;
+
+            float elapsed = 0f;
+            while (elapsed < animationDelay)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            isAnimating = false;
+            onComplete?.Invoke();
+        }
+
+        private IEnumerator FadeOutThen(System.Action onComplete)
+        {
+            isAnimating = true;
+
+            float elapsed = 0f;
+            while (elapsed < animationDelay)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                canvasGroup.alpha = Mathf.Lerp(1f, 0f, elapsed / animationDelay);
+                yield return null;
+            }
+
+            canvasGroup.alpha = 0f;
+            isAnimating = false;
+            onComplete?.Invoke();
+        }
+
+        private void LoadMainMenuNow()
+        {
+            Time.timeScale = 1f;
+
+            if (useSceneName) SceneManager.LoadScene(mainMenuSceneName);
+            else SceneManager.LoadScene(mainMenuBuildIndex);
+        }
+
+        private void QuitNow()
+        {
+            Time.timeScale = 1f;
+
             #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
             #else

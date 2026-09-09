@@ -12,9 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27db43c2f56573741945f80e1988513a, type: 3}
   m_Name: Objective_RelayChain
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
-  objectiveTitle: Bring 3 relays online
-  objectiveDescription: Alpha, Beta then Gamma. Each relay you light up permanently
-    upgrades the rover - and unlocks the next.
+  objectiveTitle: Light the relay chain
+  objectiveDescription: Alpha, Beta, Gamma. Each one pays for the next.
   objectiveIcon: {fileID: 0}
   objectiveType: 4
   targetValue: 3
@@ -23,3 +22,4 @@ MonoBehaviour:
   targetLocation: {fileID: 0}
   isOptional: 0
   trackProgress: 1
+  liveTracking: 1

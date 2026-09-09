@@ -12,10 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27db43c2f56573741945f80e1988513a, type: 3}
   m_Name: Objective_StockpileScrap
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
-  objectiveTitle: 'Optional: hold 20 scrap at once'
-  objectiveDescription: A hoarder's badge. Every relay you light burns scrap, so
-    holding twenty at one time means out-scavenging what the chain costs you. Beta's
-    cargo upgrade makes it possible.
+  objectiveTitle: "Optional \u2014 run 20 scrap deep"
+  objectiveDescription: Hold twenty at once. The chain keeps eating it.
   objectiveIcon: {fileID: 0}
   objectiveType: 0
   targetValue: 20
@@ -24,3 +22,4 @@ MonoBehaviour:
   targetLocation: {fileID: 0}
   isOptional: 1
   trackProgress: 1
+  liveTracking: 1

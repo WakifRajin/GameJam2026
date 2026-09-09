@@ -12,9 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 27db43c2f56573741945f80e1988513a, type: 3}
   m_Name: Objective_CollectScrap
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.GameObjective
-  objectiveTitle: Gather 5 Scrap Metal
-  objectiveDescription: Plating for the tower's broken housing. Have five aboard
-    when you reach it.
+  objectiveTitle: Salvage 5 scrap
+  objectiveDescription: Plating for the tower housing.
   objectiveIcon: {fileID: 0}
   objectiveType: 0
   targetValue: 5
@@ -23,3 +22,4 @@ MonoBehaviour:
   targetLocation: {fileID: 0}
   isOptional: 1
   trackProgress: 1
+  liveTracking: 1

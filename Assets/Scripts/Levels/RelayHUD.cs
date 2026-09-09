@@ -74,13 +74,13 @@ namespace GameJam2026
 
             if (nightIsComing)
             {
-                clockText.text = $"NIGHTFALL IN {seconds:F0}s";
+                clockText.text = $"SUNSET  {seconds:F0}s";
                 clockText.color = seconds <= urgentThreshold ? urgentColor : dayColor;
             }
             else
             {
                 // No solar at night - the rover is running on what it already has.
-                clockText.text = $"NIGHT - DAWN IN {seconds:F0}s";
+                clockText.text = $"NIGHT  ·  SUNRISE {seconds:F0}s";
                 clockText.color = nightColor;
             }
         }
@@ -93,7 +93,7 @@ namespace GameJam2026
 
             if (target == null)
             {
-                if (targetText != null) targetText.text = "ALL RELAYS ONLINE";
+                if (targetText != null) targetText.text = "CHAIN COMPLETE";
                 if (requirementText != null) requirementText.text = string.Empty;
                 if (directionArrow != null) directionArrow.gameObject.SetActive(false);
                 return;
@@ -102,7 +102,7 @@ namespace GameJam2026
             if (roverTransform != null && targetText != null)
             {
                 float distance = Vector3.Distance(roverTransform.position, target.transform.position);
-                targetText.text = $"NEXT: {target.RelayName}  -  {distance:F0} m";
+                targetText.text = $"{target.RelayName.ToUpperInvariant()}   {distance:F0}m";
             }
 
             if (requirementText != null) requirementText.text = target.GetRequirementSummary();
@@ -132,14 +132,14 @@ namespace GameJam2026
         private void RefreshTarget()
         {
             if (chainText == null || relayNetwork == null) return;
-            chainText.text = $"RELAY CHAIN  {relayNetwork.ActivatedCount}/{relayNetwork.TotalRelays}";
+            chainText.text = $"RELAYS  {relayNetwork.ActivatedCount}/{relayNetwork.TotalRelays}";
         }
 
         private void HandleAllOnline()
         {
             RefreshTarget();
-            if (targetText != null) targetText.text = "ALL RELAYS ONLINE";
-            if (requirementText != null) requirementText.text = "Signal away. Hold on.";
+            if (targetText != null) targetText.text = "CHAIN COMPLETE";
+            if (requirementText != null) requirementText.text = "Signal's out. Sit tight.";
             if (directionArrow != null) directionArrow.gameObject.SetActive(false);
         }
 

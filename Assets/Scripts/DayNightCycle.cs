@@ -31,13 +31,27 @@ namespace GameJam2026
         [SerializeField] private Gradient ambientColorGradient;
         [SerializeField] private bool updateAmbientLight = true;
 
+        [Tooltip("Ambient light only responds to a gradient in Flat mode; Skybox mode ignores it entirely. Forced on when Update Ambient Light is enabled.")]
+        [SerializeField] private bool forceFlatAmbient = true;
+
         [Header("Fog Settings")]
         [SerializeField] private bool controlFog = true;
         [SerializeField] private bool enableFogAutomatically = true;
         [SerializeField] private Gradient fogColorGradient;
         [SerializeField] private float fogDensity = 0.01f;
+        [Tooltip("Density multiplier over the day. Thicker at dawn/dusk, thinner at noon, so nights feel closed-in without fogging out midday.")]
+        [SerializeField] private AnimationCurve fogDensityCurve = AnimationCurve.Constant(0f, 1f, 1f);
         [SerializeField] private float fogStartDistance = 10f;
         [SerializeField] private float fogEndDistance = 100f;
+
+        [Header("Sky")]
+        [Tooltip("Drive the procedural skybox so the horizon darkens at night instead of staying lit.")]
+        [SerializeField] private bool controlSkybox = true;
+        [SerializeField] private Gradient skyTintGradient;
+        [SerializeField] private Gradient skyGroundGradient;
+        [SerializeField] private AnimationCurve skyExposureCurve = AnimationCurve.Constant(0f, 1f, 1f);
+        [SerializeField] private float maxSkyExposure = 1.15f;
+        [SerializeField] private float minSkyExposure = 0.12f;
 
         [Header("Visual Rotation")]
         [SerializeField] private bool rotateSun = true;
@@ -46,6 +60,10 @@ namespace GameJam2026
         private float currentTime;
         private bool wasDay = true;
         private bool fogWasEnabled = false;
+
+        // Runtime clone of the skybox. Writing to RenderSettings.skybox directly would edit the
+        // shared .mat asset on disk and leave it dirty in source control after every play session.
+        private Material skyboxInstance;
 
         private void Start()
         {
@@ -72,6 +90,8 @@ namespace GameJam2026
 
             // Setup fog
             SetupFog();
+
+            SetupSkybox();
 
             // Initial update
             UpdateCycle();
@@ -123,7 +143,44 @@ namespace GameJam2026
             {
                 UpdateFog();
             }
+
+            if (controlSkybox)
+            {
+                UpdateSkybox();
+            }
         }
+
+        private void SetupSkybox()
+        {
+            if (!controlSkybox || RenderSettings.skybox == null) return;
+
+            skyboxInstance = new Material(RenderSettings.skybox) { name = RenderSettings.skybox.name + " (runtime)" };
+            RenderSettings.skybox = skyboxInstance;
+        }
+
+        private void UpdateSkybox()
+        {
+            if (skyboxInstance == null) return;
+
+            if (skyTintGradient != null && skyTintGradient.colorKeys.Length > 0 && skyboxInstance.HasProperty("_SkyTint"))
+            {
+                skyboxInstance.SetColor("_SkyTint", skyTintGradient.Evaluate(currentTime));
+            }
+
+            if (skyGroundGradient != null && skyGroundGradient.colorKeys.Length > 0 && skyboxInstance.HasProperty("_GroundColor"))
+            {
+                skyboxInstance.SetColor("_GroundColor", skyGroundGradient.Evaluate(currentTime));
+            }
+
+            if (skyboxInstance.HasProperty("_Exposure"))
+            {
+                float t = (skyExposureCurve != null && skyExposureCurve.length > 0)
+                    ? skyExposureCurve.Evaluate(currentTime)
+                    : DefaultDaylightArc(currentTime);
+                skyboxInstance.SetFloat("_Exposure", Mathf.Lerp(minSkyExposure, maxSkyExposure, Mathf.Clamp01(t)));
+            }
+        }
+
 
         private void UpdateLighting()
         {
@@ -133,9 +190,12 @@ namespace GameJam2026
                 directionalLight.color = lightColorGradient.Evaluate(currentTime);
             }
 
-            // Update light intensity
-            float intensity = lightIntensityCurve.Evaluate(currentTime);
-            directionalLight.intensity = Mathf.Lerp(minLightIntensity, maxLightIntensity, intensity);
+            // An empty curve evaluates to 0, which used to pin the sun at minLightIntensity
+            // all day. Fall back to a real arc rather than silently going dark.
+            float intensity = (lightIntensityCurve != null && lightIntensityCurve.length > 0)
+                ? lightIntensityCurve.Evaluate(currentTime)
+                : DefaultDaylightArc(currentTime);
+            directionalLight.intensity = Mathf.Lerp(minLightIntensity, maxLightIntensity, Mathf.Clamp01(intensity));
 
             // Rotate sun
             if (rotateSun)
@@ -147,10 +207,28 @@ namespace GameJam2026
 
         private void UpdateAmbient()
         {
-            if (ambientColorGradient != null && ambientColorGradient.colorKeys.Length > 0)
+            if (ambientColorGradient == null || ambientColorGradient.colorKeys.Length == 0) return;
+
+            // Skybox ambient mode ignores ambientLight outright, so the gradient did nothing.
+            if (forceFlatAmbient && RenderSettings.ambientMode != UnityEngine.Rendering.AmbientMode.Flat)
             {
-                RenderSettings.ambientLight = ambientColorGradient.Evaluate(currentTime);
+                RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             }
+
+            RenderSettings.ambientLight = ambientColorGradient.Evaluate(currentTime);
+        }
+
+        /// <summary>
+        /// Sun brightness over a full cycle: dark through the night, easing up through dawn,
+        /// peaking at noon and easing back down. Used when no curve is authored.
+        /// </summary>
+        private float DefaultDaylightArc(float t)
+        {
+            if (t <= sunriseTime || t >= sunsetTime) return 0f;
+
+            // 0 at sunrise -> 1 at midday -> 0 at sunset, smoothed at both ends.
+            float dayProgress = Mathf.InverseLerp(sunriseTime, sunsetTime, t);
+            return Mathf.SmoothStep(0f, 1f, Mathf.Sin(dayProgress * Mathf.PI));
         }
 
         private void UpdateFog()
@@ -162,14 +240,18 @@ namespace GameJam2026
                 Debug.Log("Fog was disabled - automatically enabled it");
             }
 
-            if (RenderSettings.fog)
+            if (!RenderSettings.fog) return;
+
+            if (fogColorGradient != null && fogColorGradient.colorKeys.Length > 0)
             {
-                if (fogColorGradient != null && fogColorGradient.colorKeys.Length > 0)
-                {
-                    Color newFogColor = fogColorGradient.Evaluate(currentTime);
-                    RenderSettings.fogColor = newFogColor;
-                }
+                RenderSettings.fogColor = fogColorGradient.Evaluate(currentTime);
             }
+
+            // Density used to be constant, so midnight haze matched midday haze.
+            float densityScale = (fogDensityCurve != null && fogDensityCurve.length > 0)
+                ? Mathf.Max(0f, fogDensityCurve.Evaluate(currentTime))
+                : 1f;
+            RenderSettings.fogDensity = fogDensity * densityScale;
         }
 
         private void SetupFog()
@@ -409,6 +491,14 @@ namespace GameJam2026
             if (controlFog && !enableFogAutomatically)
             {
                 RenderSettings.fog = fogWasEnabled;
+            }
+
+            // Drop the runtime skybox clone so the scene does not keep a dangling material.
+            if (skyboxInstance != null)
+            {
+                if (Application.isPlaying) Destroy(skyboxInstance);
+                else DestroyImmediate(skyboxInstance);
+                skyboxInstance = null;
             }
         }
     }

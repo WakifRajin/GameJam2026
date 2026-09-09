@@ -13,9 +13,8 @@ MonoBehaviour:
   m_Name: New Upgrade
   m_EditorClassIdentifier: Assembly-CSharp::GameJam2026.UpgradeRecipe
   upgradeId: max_power
-  upgradeName: Battery Capacity
-  description: Fuse scrap plating and stored charge into a larger cell array. Each
-    tier raises the rover's maximum power by 10.
+  upgradeName: Cell Array
+  description: Bigger battery. +10 max power per tier.
   icon: {fileID: 0}
   upgradeType: 0
   costs:

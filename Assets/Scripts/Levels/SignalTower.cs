@@ -101,14 +101,14 @@ namespace GameJam2026
         /// <summary>What the rover still needs to take the next step here, for HUD display.</summary>
         public string GetRequirementSummary()
         {
-            if (IsLocked) return $"Locked - bring {prerequisiteTower.RelayName} online first";
+            if (IsLocked) return $"Locked · {prerequisiteTower.RelayName} first";
 
             switch (_currentState)
             {
                 case TowerState.Broken:
-                    return $"{scrapMetalRequired} scrap ({GetPlayerScrapMetal()} held)";
+                    return $"{scrapMetalRequired} scrap · {GetPlayerScrapMetal()} aboard";
                 case TowerState.Repaired:
-                    return $"{powerRequired:F0} {PowerSourceLabel} ({GetAvailablePower():F0} held)";
+                    return $"{powerRequired:F0} power · {GetAvailablePower():F0} aboard";
                 default:
                     return "Online";
             }
@@ -216,28 +216,27 @@ namespace GameJam2026
 
             if (IsLocked)
             {
-                promptText.text = $"{RelayName} - LOCKED\nBring {prerequisiteTower.RelayName} online first";
+                promptText.text = $"{RelayName.ToUpperInvariant()}  ·  LOCKED\n" +
+                                  $"{prerequisiteTower.RelayName} has to come online first";
                 return;
             }
 
             switch (_currentState)
             {
                 case TowerState.Broken:
-                    int haveScrap = GetPlayerScrapMetal();
-                    promptText.text = $"[{interactKey}] Repair Tower\n" +
-                                    $"Requires: {scrapMetalRequired} Scrap Metal\n" +
-                                    $"You have: {haveScrap}";
+                    promptText.text = $"[{interactKey}]  REPAIR\n" +
+                                      $"{scrapMetalRequired} scrap  ·  {GetPlayerScrapMetal()} aboard";
                     break;
-                    
+
                 case TowerState.Repaired:
-                    float havePower = roverAttributes != null ? roverAttributes.CurrentPower : 0f;
-                    promptText.text = $"[{interactKey}] Power Tower\n" +
-                                    $"Requires: {powerRequired} Power\n" +
-                                    $"You have: {havePower:F0}";
+                    // Reads the same source the activation actually spends from; this used to
+                    // show the rover's battery while the spend came out of cargo cells.
+                    promptText.text = $"[{interactKey}]  POWER UP\n" +
+                                      $"{powerRequired:F0} power  ·  {GetAvailablePower():F0} aboard";
                     break;
                     
                 case TowerState.Active:
-                    promptText.text = "✓ Tower Online - Signal Transmitting!";
+                    promptText.text = "ONLINE  ·  TRANSMITTING";
                     break;
             }
         }
