@@ -1,7 +1,5 @@
 # Stranded: Mars Odyssey
 
-## GAME DESCRIPTION
-
 You are a lone Mars rover operator stranded on the harsh Martian surface after a catastrophic sandstorm damaged your communication systems. With limited power reserves and time running out, you must navigate the unforgiving terrain, scavenge essential resources, and repair the signal tower before nightfall brings deadly freezing temperatures.
 
 The red planet is littered with debris from previous missions - scrap metal, power cells, and advanced technology components scattered across the desolate landscape. Your survival depends on efficient resource management, careful navigation, and quick thinking as the day-night cycle threatens to drain your rover's precious power reserves.
@@ -199,13 +197,6 @@ A: Make sure you're not in a menu (close inventory/pause menu)
 ---
 
 ## CREDITS
-A survival-exploration game created for [Game Jam 2026]
+A survival-exploration game created for BUET CSE Fest 2025
 Theme: Isolation and Communication
-
-Genre: Resource Management, Survival, Exploration
-Platform: PC (Windows/Mac/Linux)
-Engine: Unity
-
 ---
-
-**Good luck, Rover Operator. Mars is counting on you.** 🚀🔴
